@@ -4,18 +4,16 @@ import { PageHead } from "@/components/labels";
 export const metadata: Metadata = { title: "Privacidade", description: "Como a Voz de Torres Vedras trata dados pessoais." };
 
 const SECTIONS = [
-  { title: "Que dados guardamos", body: "Um valor irreversível derivado do seu email, as suas posições, propostas e apoios, e datas de atividade. O endereço de email é usado para enviar a ligação de entrada e não fica guardado em claro. O endereço IP é transformado num valor que muda todos os dias, usado apenas em limites de utilização." },
-  { title: "Dados sensíveis", body: "Uma posição sobre um tema municipal pode revelar opiniões políticas, que têm proteção reforçada no RGPD. Por isso, o tratamento assenta no seu consentimento explícito, dado ao entrar, que pode retirar em qualquer momento apagando a conta." },
-  { title: "O que é público", body: "Apenas resultados agregados, e só a partir de um número mínimo de posições. Nunca publicamos quem respondeu nem o que cada pessoa escolheu." },
-  { title: "Os seus direitos", body: "Na sua conta pode consultar e descarregar os seus dados, alterar ou remover posições e apagar a conta, o que elimina as suas posições e apoios. As propostas já publicadas deixam de estar associadas a si." },
-  { title: "Autoridade de controlo", body: "Pode apresentar reclamação à Comissão Nacional de Proteção de Dados (CNPD)." },
-  { title: "Cookies", body: "Usamos apenas um cookie técnico para manter a sessão. Não usamos cookies de publicidade nem ferramentas de análise de terceiros." },
+  { title: "Sem contas nem registo", body: "Todo o conteúdo é público e de acesso livre. Esta plataforma não pede dados pessoais, não tem contas e não usa cookies de sessão, de publicidade ou de análise de terceiros." },
+  { title: "Eleitos municipais", body: "Publicamos apenas informação oficial sobre o exercício de funções públicas: nome, cargo, força política, pelouros, comissões e votos quando a fonte os identifica." },
+  { title: "Fornecedores", body: "Nos contratos, o nome e o NIF de pessoas singulares não são republicados: a linha remete para o Portal BASE." },
+  { title: "Correções", body: "Se encontrar um dado pessoal incorreto ou desatualizado, a referência é sempre a fonte oficial indicada. Pode também apresentar reclamação à Comissão Nacional de Proteção de Dados (CNPD)." },
 ];
 
 export default function PrivacidadePage() {
   return (
     <>
-      <PageHead title="Privacidade e dados pessoais" />
+      <PageHead title="Privacidade" />
       <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
         {SECTIONS.map((section) => (
           <section key={section.title}>

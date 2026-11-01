@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { BASE_DATASET_URL, normalizeBaseRecord, type BaseRecord, type NormalizedContract } from "./base";
-import { parseRows, slugify, validateDecisionRows, type RowError } from "./records";
+import { parseRows, slugify, validateBudgetRows, validateDecisionRows, type RowError } from "./records";
 
 export type ImportSummary = { imported: number; skipped: number; errors: RowError[]; runId: string };
 
@@ -35,9 +35,10 @@ export async function importBaseContracts(
     const { sourceUrl, ...fields } = contract;
     await db.contract.upsert({
       where: { baseId: contract.baseId },
-      update: { ...fields, importRunId: run.id },
+      update: { ...fields, updatedAt: retrievedAt, importRunId: run.id },
       create: {
         ...fields,
+        updatedAt: retrievedAt,
         importRunId: run.id,
         sources: {
           connectOrCreate: {
@@ -94,6 +95,7 @@ export async function importDecisions(
         date: new Date(`${row.meetingDate}T12:00:00Z`),
         hasTime: false,
         title: row.meetingTitle,
+        updatedAt: retrievedAt,
       },
     });
     const source = await db.source.upsert({
@@ -119,6 +121,7 @@ export async function importDecisions(
       votesFor: row.votesFor ?? null,
       votesAgainst: row.votesAgainst ?? null,
       abstentions: row.abstentions ?? null,
+      updatedAt: retrievedAt,
     };
     const slug = slugify(`${meetingSlug} ${row.itemNumber ?? ""} ${row.title}`);
     await db.decision.upsert({
@@ -126,6 +129,50 @@ export async function importDecisions(
       update: { ...fields, sources: { connect: { id: source.id } } },
       create: { ...fields, slug, sources: { connect: { id: source.id } } },
     });
+  }
+
+  await db.importRun.update({ where: { id: run.id }, data: { imported: valid.length } });
+  return { imported: valid.length, skipped: errors.length, errors, runId: run.id };
+}
+
+/** Importa valores orçamentais transcritos dos documentos oficiais. */
+export async function importBudget(
+  db: PrismaClient,
+  fileName: string,
+  content: string,
+  sourceUrl: string,
+  retrievedAt = new Date(),
+): Promise<ImportSummary> {
+  const { valid, errors } = validateBudgetRows(parseRows(fileName, content));
+  const run = await db.importRun.create({
+    data: {
+      dataset: "orcamento",
+      sourceUrl,
+      fileName,
+      sha256: sha256(content),
+      retrievedAt,
+      skipped: errors.length,
+      errors: errors.length ? errors : undefined,
+    },
+  });
+
+  for (const row of valid) {
+    const source = await db.source.upsert({
+      where: { url: row.sourceUrl },
+      update: {},
+      create: { name: row.sourceName, title: row.sourceTitle, url: row.sourceUrl, type: "ORCAMENTO", retrievedAt, importRunId: run.id },
+    });
+    const fields = {
+      amountEur: row.amountEur,
+      approximate: row.approximate,
+      note: row.note || null,
+      asOf: row.asOf ? new Date(`${row.asOf}T12:00:00Z`) : null,
+      updatedAt: retrievedAt,
+    };
+    const key = { year: row.year, kind: row.kind, label: row.label };
+    const existing = await db.budgetEntry.findFirst({ where: key });
+    if (existing) await db.budgetEntry.update({ where: { id: existing.id }, data: { ...fields, sources: { set: [{ id: source.id }] } } });
+    else await db.budgetEntry.create({ data: { ...key, ...fields, sources: { connect: { id: source.id } } } });
   }
 
   await db.importRun.update({ where: { id: run.id }, data: { imported: valid.length } });

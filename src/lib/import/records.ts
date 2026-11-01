@@ -54,11 +54,33 @@ export function parseRows(fileName: string, content: string): Record<string, unk
   return parse(content, { columns: true, skip_empty_lines: true, trim: true, bom: true });
 }
 
-export function validateDecisionRows(rows: Record<string, unknown>[]): { valid: DecisionRow[]; errors: RowError[] } {
-  const valid: DecisionRow[] = [];
+/** Valores orçamentais transcritos de um documento oficial. */
+export const budgetRowSchema = z
+  .object({
+    year: z.coerce.number().int().min(2000).max(2100),
+    kind: z.enum(["RESUMO", "RECEITA", "DESPESA", "SITUACAO_FINANCEIRA"]),
+    label: z.string().min(3),
+    amountEur: z.coerce.number().nonnegative(),
+    approximate: z.preprocess((value) => value === true || value === "true", z.boolean()),
+    asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    note: z.string().optional(),
+    sourceName: z.string().min(3),
+    sourceTitle: z.string().min(3),
+    sourceUrl: z.url(),
+  })
+  .superRefine((row, context) => {
+    if (!isOfficialUrl(row.sourceUrl)) {
+      context.addIssue({ code: "custom", path: ["sourceUrl"], message: "A fonte tem de ser um domínio oficial." });
+    }
+  });
+
+export type BudgetRow = z.infer<typeof budgetRowSchema>;
+
+function validateRows<T>(schema: z.ZodType<T>, rows: Record<string, unknown>[]): { valid: T[]; errors: RowError[] } {
+  const valid: T[] = [];
   const errors: RowError[] = [];
   rows.forEach((row, index) => {
-    const result = decisionRowSchema.safeParse(row);
+    const result = schema.safeParse(row);
     if (result.success) valid.push(result.data);
     else {
       errors.push({
@@ -69,6 +91,9 @@ export function validateDecisionRows(rows: Record<string, unknown>[]): { valid: 
   });
   return { valid, errors };
 }
+
+export const validateDecisionRows = (rows: Record<string, unknown>[]) => validateRows(decisionRowSchema, rows);
+export const validateBudgetRows = (rows: Record<string, unknown>[]) => validateRows(budgetRowSchema, rows);
 
 export function slugify(text: string): string {
   return text

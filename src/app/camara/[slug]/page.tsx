@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { KindLabel, PageHead } from "@/components/labels";
+import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt, SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { BODY_LABEL, formatDateShort } from "@/lib/format";
@@ -32,6 +32,7 @@ export default async function OfficialPage({ params }: Props) {
     <>
       <PageHead title={official.name} kicker={<div className="flex items-center gap-2"><Link href="/camara" className="text-sm underline">Câmara</Link><KindLabel kind="REGISTO_OFICIAL" /></div>}>
         <p>{official.role} · {BODY_LABEL[official.body]}{official.parish ? ` · ${official.parish}` : ""}</p>
+        <LastUpdated date={official.updatedAt} className="mt-1" />
       </PageHead>
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 lg:grid-cols-[1fr_21rem]">
         <div className="space-y-7">

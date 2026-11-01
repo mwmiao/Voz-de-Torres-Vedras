@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { KindLabel, PageHead } from "@/components/labels";
+import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 
@@ -27,6 +27,7 @@ export default async function CamaraPage() {
     <>
       <PageHead title="Câmara" kicker={<KindLabel kind="REGISTO_OFICIAL" />}>
         <p>Diretório neutro, apenas com informação pública e oficial. Não inclui classificações, comentários nem apreciações sobre pessoas.</p>
+        <LastUpdated date={officials[0]?.updatedAt} className="mt-1" />
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-10 px-4 py-8">
         <section aria-labelledby="executivo">
@@ -39,6 +40,8 @@ export default async function CamaraPage() {
                 <p className="mt-2 text-sm">
                   {official.portfolios.length > 0 ? `${official.portfolios.length} pelouros` : "Sem pelouros indicados na fonte"}
                 </p>
+                <div className="mt-2"><SourceChips sources={official.sources} /></div>
+                <LastUpdated date={official.updatedAt} className="mt-2" />
               </li>
             ))}
           </ul>

@@ -1,55 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildAggregate } from "@/lib/aggregate";
-import { hashEmail, hashIp, isDisposableEmail, normalizeEmail } from "@/lib/privacy";
-import { isAllowedByRobots } from "@/lib/robots";
-import { isOfficialUrl, isVerified } from "@/lib/sources";
+import { toCsv } from "@/lib/csv";
+import { contractOrder, decisionWhere, queryString } from "@/lib/filters";
 import { formatEur, voteSummary } from "@/lib/format";
 import { isPersonNif, normalizeBaseRecord, parseDate } from "@/lib/import/base";
-import { parseRows, slugify, validateDecisionRows } from "@/lib/import/records";
-
-describe("agregados", () => {
-  const options = [
-    { id: "a", label: "Concordo", count: 2 },
-    { id: "b", label: "Discordo", count: 1 },
-    { id: "c", label: "Preciso de mais informação", count: 1 },
-  ];
-
-  it("não revela contagens nem total abaixo do mínimo", () => {
-    const result = buildAggregate(options, 10);
-    expect(result.visible).toBe(false);
-    expect(JSON.stringify(result)).not.toContain("count");
-    expect(result.total).toBeNull();
-  });
-
-  it("mostra percentagens que somam 100", () => {
-    const result = buildAggregate([
-      { id: "a", label: "A", count: 1 },
-      { id: "b", label: "B", count: 1 },
-      { id: "c", label: "C", count: 1 },
-    ], 3);
-    if (!result.visible) throw new Error("devia estar visível");
-    expect(result.rows.reduce((sum, row) => sum + row.percent, 0)).toBe(100);
-    expect(result.total).toBe(3);
-  });
-});
-
-describe("privacidade", () => {
-  it("agrupa variantes da mesma caixa de correio", () => {
-    expect(normalizeEmail(" Ana.Silva+voz@GoogleMail.com ")).toBe("anasilva@gmail.com");
-    expect(normalizeEmail("ana.silva@sapo.pt")).toBe("ana.silva@sapo.pt");
-    expect(normalizeEmail("invalido")).toBe("");
-  });
-
-  it("não guarda o email nem repete o hash de IP entre dias", () => {
-    expect(hashEmail("ana@sapo.pt")).not.toContain("ana");
-    expect(hashIp("1.2.3.4", new Date("2026-11-01"))).not.toBe(hashIp("1.2.3.4", new Date("2026-11-02")));
-  });
-
-  it("recusa domínios descartáveis", () => {
-    expect(isDisposableEmail("a@mailinator.com")).toBe(true);
-    expect(isDisposableEmail("a@sapo.pt")).toBe(false);
-  });
-});
+import { parseRows, slugify, validateBudgetRows, validateDecisionRows } from "@/lib/import/records";
+import { isAllowedByRobots } from "@/lib/robots";
+import { isOfficialUrl, isVerified } from "@/lib/sources";
 
 describe("fontes", () => {
   it("reconhece domínios oficiais e recusa imitações", () => {
@@ -132,7 +88,7 @@ describe("Portal BASE", () => {
   });
 });
 
-describe("importação de decisões", () => {
+describe("importação", () => {
   const row = {
     body: "ASSEMBLEIA_MUNICIPAL",
     meetingDate: "2026-06-24",
@@ -157,6 +113,22 @@ describe("importação de decisões", () => {
     expect(errors[0].message).toContain("sourceUrl");
   });
 
+  it("valida valores orçamentais e exige fonte oficial", () => {
+    const budget = {
+      year: "2026",
+      kind: "DESPESA",
+      label: "Pessoal",
+      amountEur: "1000.50",
+      approximate: "true",
+      sourceName: "Câmara Municipal",
+      sourceTitle: "Orçamento da Despesa",
+      sourceUrl: "https://www.cm-tvedras.pt/documentos/gestao/",
+    };
+    const ok = validateBudgetRows([budget]);
+    expect(ok.valid[0]).toMatchObject({ year: 2026, amountEur: 1000.5, approximate: true });
+    expect(validateBudgetRows([{ ...budget, sourceUrl: "https://blog.exemplo.pt" }]).errors).toHaveLength(1);
+  });
+
   it("lê CSV com BOM e acentos", () => {
     const rows = parseRows("d.csv", "﻿body,title\nASSEMBLEIA_MUNICIPAL,Moção\n");
     expect(rows[0]).toEqual({ body: "ASSEMBLEIA_MUNICIPAL", title: "Moção" });
@@ -164,6 +136,44 @@ describe("importação de decisões", () => {
 
   it("gera identificadores legíveis", () => {
     expect(slugify("Proteção Civil — 2.ª fase")).toBe("protecao-civil-2-fase");
+  });
+});
+
+describe("exportação CSV", () => {
+  it("usa ponto e vírgula, BOM e aspas quando necessário", () => {
+    const csv = toCsv(["Objeto", "Valor"], [['Obra; "fase" 1', 10]]);
+    expect(csv.startsWith("﻿Objeto;Valor\r\n")).toBe(true);
+    expect(csv).toContain('"Obra; ""fase"" 1";10');
+  });
+
+  it("escreve datas ISO e células vazias", () => {
+    expect(toCsv(["D", "V"], [[new Date("2026-03-11T12:00:00Z"), null]])).toContain("2026-03-11;");
+  });
+
+  it("neutraliza fórmulas de folhas de cálculo", () => {
+    expect(toCsv(["A"], [["=SOMA(A1)"]])).toContain("'=SOMA(A1)");
+  });
+});
+
+describe("filtros", () => {
+  it("só mostra decisões com fonte oficial e ignora valores inválidos", () => {
+    const where = decisionWhere({ orgao: "INVENTADO", resultado: "X", ano: "abc" });
+    expect(where.sources).toEqual({ some: { official: true } });
+    expect(where.outcome).toBeUndefined();
+    expect(where.OR).toBeUndefined();
+  });
+
+  it("filtra por ano", () => {
+    const where = decisionWhere({ ano: "2026" });
+    expect(where.meeting).toMatchObject({ date: { gte: new Date(Date.UTC(2026, 0, 1)) } });
+  });
+
+  it("ordena contratos por valor", () => {
+    expect(contractOrder({ ordem: "valor" })).toEqual({ priceEur: "desc" });
+  });
+
+  it("omite parâmetros vazios", () => {
+    expect(queryString({ q: "", ordem: "valor" }, { pagina: "2" })).toBe("ordem=valor&pagina=2");
   });
 });
 

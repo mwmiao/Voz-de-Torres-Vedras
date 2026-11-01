@@ -32,9 +32,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://voz:voz_ci@localhost:5432/voz_tv?schema=public
-      AUTH_SECRET: segredo-apenas-para-testes-de-ci
       APP_URL: http://localhost:1400
-      SEED_EXAMPLES: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,8 +54,9 @@ jobs:
             curl -fsS http://127.0.0.1:1400/api/health && break
             sleep 1
           done
-          curl -fsS http://127.0.0.1:1400/ | grep -q "Diz onde estás"
-          curl -fsS http://127.0.0.1:1400/registo | grep -q "Edital"
+          curl -fsS http://127.0.0.1:1400/ | grep -q "com fontes oficiais"
+          curl -fsS http://127.0.0.1:1400/reunioes | grep -q "Edital"
+          curl -fsS http://127.0.0.1:1400/dados/contratos.csv | grep -q "Portal\|base.gov.pt"
 
   publish:
     # Só publica depois de os testes passarem, e nunca a partir de pull requests.

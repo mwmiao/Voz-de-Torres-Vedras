@@ -1,35 +1,30 @@
 import type { Metadata } from "next";
 import { KindLabel, PageHead } from "@/components/labels";
 import { OfficialBadge, UnverifiedBadge } from "@/components/Receipts";
-import { getMinPublicCount } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Método", description: "Como a Voz de Torres Vedras separa opinião, registo oficial e contexto, e como verifica fontes." };
+export const metadata: Metadata = { title: "Método", description: "Como a Voz de Torres Vedras recolhe, verifica e apresenta dados públicos." };
 
-export default async function MetodoPage() {
-  const minimum = await getMinPublicCount();
+export default function MetodoPage() {
   return (
     <>
-      <PageHead title="Método"><p>As vozes dos residentes e os registos oficiais do município pertencem lado a lado.</p></PageHead>
+      <PageHead title="Método"><p>Registos · Dados · Fontes: informação pública, neutra e verificável.</p></PageHead>
       <div className="prose-civic mx-auto max-w-3xl space-y-8 px-4 py-8">
         <section>
-          <h2 className="font-serif text-2xl font-semibold">Três tipos de conteúdo, sempre separados</h2>
+          <h2 className="font-serif text-2xl font-semibold">Dois tipos de conteúdo, sempre separados</h2>
           <ul className="mt-3 space-y-3">
-            <li><KindLabel kind="RESIDENTES" /> <span className="block mt-1">Resultados agregados de quem participa. Não é uma sondagem representativa da população.</span></li>
-            <li><KindLabel kind="REGISTO_OFICIAL" /> <span className="block mt-1">Transcrição de atas, editais, vídeos, orçamentos e contratos publicados por entidades públicas.</span></li>
-            <li><KindLabel kind="CONTEXTO_EDITORIAL" /> <span className="block mt-1">Resumos neutros que ajudam a compreender um tema. Não substituem os documentos.</span></li>
+            <li><KindLabel kind="REGISTO_OFICIAL" /> <span className="mt-1 block">Transcrição de atas, editais, vídeos, orçamentos e contratos publicados por entidades públicas.</span></li>
+            <li><KindLabel kind="CONTEXTO_EDITORIAL" /> <span className="mt-1 block">Resumos neutros que ajudam a compreender um assunto. Não substituem os documentos.</span></li>
           </ul>
         </section>
         <section>
           <h2 className="font-serif text-2xl font-semibold">Fontes</h2>
           <p className="mt-2"><OfficialBadge /> indica uma ligação a um documento de uma entidade pública.</p>
           <p><UnverifiedBadge /> indica que não existe fonte oficial: a afirmação fica fora do conteúdo factual, numa área própria.</p>
-          <p>Uma decisão sem documento oficial não entra no Registo. Quando a fonte não publica um dado, como a contagem de votos, indicamos isso mesmo e não o estimamos.</p>
+          <p>Uma decisão sem documento oficial não entra no Registo. Quando a fonte não publica um dado, como a contagem de votos, indicamos isso mesmo e não o estimamos. Valores aproximados na fonte aparecem assinalados com «cerca de».</p>
         </section>
         <section>
-          <h2 className="font-serif text-2xl font-semibold">Uma pessoa, uma voz</h2>
-          <p className="mt-2">Cada conta tem uma posição por tema, que pode ser alterada ou removida. Nenhuma participação tem mais destaque do que outra.</p>
-          <p>Os resultados de um tema só são publicados a partir de {minimum} posições.</p>
+          <h2 className="font-serif text-2xl font-semibold">Última atualização</h2>
+          <p className="mt-2">A data indica quando o registo foi recolhido ou verificado na fonte oficial pela última vez. Não indica quando a entidade pública o alterou.</p>
         </section>
         <section>
           <h2 className="font-serif text-2xl font-semibold">Neutralidade</h2>
@@ -39,6 +34,7 @@ export default async function MetodoPage() {
         <section>
           <h2 className="font-serif text-2xl font-semibold">Recolha de dados</h2>
           <p className="mt-2">Usamos apenas informação pública e respeitamos o robots.txt, os termos de utilização e os limites de acesso de cada site. Cada importação guarda a origem, a data de recolha e uma impressão digital do ficheiro.</p>
+          <p>Algumas informações ainda estão incompletas. Os mapas completos do orçamento e as deliberações do Executivo constam de PDF que o site da Câmara exclui do acesso automático, pelo que dependem de transcrição.</p>
         </section>
       </div>
     </>

@@ -10,11 +10,16 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  experimental: {
-    serverActions: { bodySizeLimit: "5mb" },
-  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
+  },
+  async redirects() {
+    return [
+      { source: "/registo", destination: "/reunioes", permanent: true },
+      { source: "/transparencia", destination: "/contratos", permanent: true },
+      { source: "/temas", destination: "/dossies", permanent: true },
+      { source: "/temas/:slug", destination: "/dossies/:slug", permanent: true },
+    ];
   },
 };
 

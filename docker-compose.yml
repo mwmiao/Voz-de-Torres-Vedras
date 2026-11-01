@@ -9,26 +9,13 @@ services:
       - "${APP_PORT:-1400}:1400"
     environment:
       DATABASE_URL: postgresql://voz:${POSTGRES_PASSWORD:-voz_local}@db:5432/voz_tv?schema=public
-      # Num NAS, indique o endereço real: é usado nas ligações de entrada enviadas por email.
+      # Endereço público, usado no mapa do site.
       APP_URL: ${APP_URL:-http://localhost:1400}
       PORT: "1400"
-      # Apenas para testes locais: noutro ambiente defina um segredo próprio.
-      AUTH_SECRET: ${AUTH_SECRET:-segredo-local-apenas-para-docker-compose}
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
-      MODERATOR_EMAILS: ${MODERATOR_EMAILS:-}
-      # O MailHog recebe os emails de entrada: consulte-os na porta 8025.
-      SMTP_HOST: ${SMTP_HOST:-mailhog}
-      SMTP_PORT: ${SMTP_PORT:-1025}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-Voz de Torres Vedras <nao-responder@localhost>}
       RUN_SEED: ${RUN_SEED:-true}
-      SEED_EXAMPLES: ${SEED_EXAMPLES:-true}
     depends_on:
       db:
         condition: service_healthy
-      mailhog:
-        condition: service_started
     restart: unless-stopped
 
   db:
@@ -46,12 +33,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    restart: unless-stopped
-
-  mailhog:
-    image: mailhog/mailhog:v1.0.1
-    ports:
-      - "${MAILHOG_PORT:-8025}:8025"
     restart: unless-stopped
 
   # Opcional: docker compose --profile tools up

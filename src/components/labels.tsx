@@ -1,21 +1,25 @@
 import type { ContentKind, Outcome } from "@prisma/client";
 import type { ReactNode } from "react";
-import { OUTCOME_LABEL } from "@/lib/format";
+import { formatDate, OUTCOME_LABEL } from "@/lib/format";
 
 const KIND = {
-  RESIDENTES: { label: "Opinião de residentes", className: "bg-opinion-soft text-opinion" },
   REGISTO_OFICIAL: { label: "Registo oficial", className: "bg-record-soft text-record" },
   CONTEXTO_EDITORIAL: { label: "Contexto editorial", className: "bg-editorial-soft text-editorial" },
 } as const;
 
-/** Separa sempre os três tipos de conteúdo: opinião, registo e contexto. */
+/** Separa o que é registo oficial do que é contexto escrito por esta plataforma. */
 export function KindLabel({ kind }: { kind: ContentKind }) {
   const { label, className } = KIND[kind];
   return <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${className}`}>{label}</span>;
 }
 
-export function ExampleBadge() {
-  return <span className="inline-block rounded bg-sample-soft px-2 py-0.5 text-xs font-semibold text-sample">Dados de exemplo</span>;
+export function LastUpdated({ date, className = "" }: { date: Date | null | undefined; className?: string }) {
+  if (!date) return null;
+  return <p className={`text-xs text-muted ${className}`}>Última atualização: {formatDate(date)}</p>;
+}
+
+export function CsvLink({ href, label = "Descarregar CSV" }: { href: string; label?: string }) {
+  return <a href={href} className="btn-quiet no-underline" download>{label}</a>;
 }
 
 export function OutcomeBadge({ outcome }: { outcome: Outcome }) {

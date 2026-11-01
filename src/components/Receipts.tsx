@@ -61,7 +61,7 @@ export function Receipt({ source }: { source: Source }) {
         <dd>{source.name}</dd>
         <dt>Publicação</dt>
         <dd>{source.publishedAt ? formatDate(source.publishedAt) : "Data não indicada na fonte"}</dd>
-        <dt>Consulta</dt>
+        <dt>Última atualização</dt>
         <dd>{formatDate(source.retrievedAt)}</dd>
       </dl>
       {source.excerpt ? <blockquote className="mt-2 border-l-2 border-line pl-3 text-sm">“{source.excerpt}”</blockquote> : null}

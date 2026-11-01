@@ -53,6 +53,7 @@ export const SOURCES: SourceSeed[] = [
   { key: "am-ed-10-2026", name: AM_NAME, title: "Edital n.º 10/2026 — Sessão ordinária de 24 de junho: deliberações", url: `${AM_UPLOADS}/2026/08/Edital-n.o-10-2026_signed.pdf`, type: "EDITAL", publishedAt: "2026-06-30" },
   { key: "am-ed-11-2026", name: AM_NAME, title: "Edital n.º 11/2026 — Sessão ordinária de 30 de setembro", url: "https://www.am-tvedras.pt/11709-2/", type: "EDITAL" },
   { key: "am-ed-12-2026", name: AM_NAME, title: "Edital n.º 12/2026 — Sessão ordinária de 14 de outubro", url: "https://www.am-tvedras.pt/edital-n-12-2026/", type: "EDITAL" },
+  { key: "am-ata-9-2025", name: AM_NAME, title: "Ata n.º 9/2025 — Sessão de 23 e 29 de dezembro de 2025", url: `${AM_UPLOADS}/2026/05/Ata-9AM-23-e-29-dez-2026.pdf`, type: "ATA" },
   { key: "am-ata-1-2026", name: AM_NAME, title: "Ata n.º 1/2026 — Sessão de 24 de fevereiro", url: `${AM_UPLOADS}/2026/05/Ata-1AM-24-02.pdf`, type: "ATA" },
   { key: "am-info-2406", name: AM_NAME, title: "Informação sobre a atividade municipal — Assembleia Municipal de 24 de junho", url: `${AM_UPLOADS}/2026/08/Informacao_Presidente_AM_24.06.2026.pdf`, type: "DOCUMENTO_PDF", publishedAt: "2026-06-23" },
   { key: "am-doc-hospital", name: AM_NAME, title: "Moção “Pela urgente definição da localização e do perfil assistencial do novo Hospital do Oeste”", url: `${AM_UPLOADS}/2026/08/Mocao-hospital.pdf`, type: "DOCUMENTO_PDF" },
@@ -97,7 +98,7 @@ export type MeetingSeed = {
 };
 
 export const MEETINGS: MeetingSeed[] = [
-  { slug: "am-2025-12-23", body: "ASSEMBLEIA_MUNICIPAL", date: "2025-12-23T12:00:00Z", hasTime: false, title: "Sessão ordinária (23 e 29 de dezembro de 2025)", sources: ["am-ed-1-2026", "am-video-2312", "am-video-2912"] },
+  { slug: "am-2025-12-23", body: "ASSEMBLEIA_MUNICIPAL", date: "2025-12-23T12:00:00Z", hasTime: false, title: "Sessão ordinária (23 e 29 de dezembro de 2025)", sources: ["am-ed-1-2026", "am-ata-9-2025", "am-video-2312", "am-video-2912"] },
   { slug: "am-2026-02-24", body: "ASSEMBLEIA_MUNICIPAL", date: "2026-02-24T21:00:00Z", title: "Sessão ordinária de 24 de fevereiro de 2026", location: "Auditório dos Paços do Concelho, Praça do Município, Torres Vedras", sources: ["am-ed-4-2026", "am-ata-1-2026", "am-video-2402"] },
   { slug: "am-2026-04-29", body: "ASSEMBLEIA_MUNICIPAL", date: "2026-04-29T12:00:00Z", hasTime: false, title: "Sessão ordinária de 29 de abril de 2026", sources: ["am-ed-8-2026", "am-video-2904"] },
   { slug: "am-2026-05-04", body: "ASSEMBLEIA_MUNICIPAL", date: "2026-05-04T12:00:00Z", hasTime: false, title: "Continuação da sessão ordinária, 4 de maio de 2026", sources: ["am-ed-8-2026", "am-video-0405"] },
@@ -306,14 +307,56 @@ export const COMMITTEES: { name: string; chair?: string; members: string[] }[] =
   { name: "Comissão Permanente de Proteção Civil e Segurança", chair: "Dalila do Carmo Miranda de Jesus", members: ["Mário Jorge da Glória Agostinho", "José António do Vale Paulos", "Nuno Carlos Lopes Pinto Pedro", "Vanda Raquel Inácio da Silva", "Paula Cristina dos Santos Lopes", "Fernando Manuel Osório Guerra"] },
 ];
 
-/** Situação financeira a 19/06/2026, tal como comunicada à Assembleia Municipal. */
-export const FINANCIAL_FACTS = [
-  { label: "Total de disponibilidades", amount: 22128870.49 },
-  { label: "Dívida de médio e longo prazo (empréstimos e locações financeiras)", amount: 14445842.08 },
-  { label: "Dívida de curto prazo: acordos, apoios, delegação de competências e contratos-programa", amount: 66344.68 },
-  { label: "Dívida de curto prazo: outras dívidas a fornecedores e credores", amount: 1236163.42 },
-  { label: "Dívida total da autarquia", amount: 14180307.91, note: "Valor sem a contribuição das entidades relevantes para os limites de dívida, por falta de informação à data, conforme a própria fonte." },
-  { label: "Limite da dívida total para 2026", amount: 135780133.43 },
+/** Contagens e sentido de voto registados nas atas: [fragmento do título, a favor, contra, abstenções, nota]. */
+export const VOTE_COUNTS: [string, number, number, number, string?, string?][] = [
+  ["Taxa de IMI para 2025", 22, 16, 4, "A favor: Unidos por Torres Vedras. Contra: PS e PCP. Abstenções: Chega.", "am-ata-9-2025"],
+  ["Participação variável no IRS", 26, 16, 0, undefined, "am-ata-9-2025"],
+  ["Documentos previsionais do Município para 2026", 38, 4, 0, "Contra: Grupo Municipal do Chega.", "am-ata-9-2025"],
+  ["Documentos previsionais dos SMAS para 2026", 38, 4, 0, "Contra: Grupo Municipal do Chega.", "am-ata-9-2025"],
+  ["gestão do Mercado Municipal", 38, 0, 4, "Abstenções: Grupo Municipal do Chega.", "am-ata-9-2025"],
+  ["gestão da Expotorres", 38, 0, 4, "Abstenções: Grupo Municipal do Chega.", "am-ata-9-2025"],
+  ["gestão do estacionamento", 38, 0, 4, "Abstenções: Grupo Municipal do Chega.", "am-ata-9-2025"],
+  ["alterações climáticas", 41, 0, 1, "Absteve-se Herculano Raposo.", "am-ata-1-2026"],
+];
+
+export type BudgetSeed = {
+  year: number;
+  kind: "RESUMO" | "RECEITA" | "DESPESA" | "SITUACAO_FINANCEIRA";
+  label: string;
+  amount: number;
+  approximate?: boolean;
+  asOf?: string;
+  note?: string;
+  source: string;
+};
+
+const ATA9_NOTE = "Valor aproximado, referido na discussão do orçamento. O valor exato consta dos documentos previsionais.";
+const REVISION_NOTE = "Exposição do Presidente da Câmara sobre a 1.ª revisão, registada em ata.";
+
+export const BUDGET: BudgetSeed[] = [
+  { year: 2026, kind: "RESUMO", label: "Orçamento da Câmara Municipal", amount: 116000000, approximate: true, asOf: "2025-12-23", note: ATA9_NOTE, source: "am-ata-9-2025" },
+  { year: 2026, kind: "RESUMO", label: "Orçamento dos SMAS", amount: 25000000, approximate: true, asOf: "2025-12-23", note: ATA9_NOTE, source: "am-ata-9-2025" },
+  { year: 2026, kind: "DESPESA", label: "Despesas de capital previstas", amount: 40000000, approximate: true, asOf: "2025-12-23", note: ATA9_NOTE, source: "am-ata-9-2025" },
+  { year: 2026, kind: "DESPESA", label: "Recursos financeiros para as freguesias (descentralização)", amount: 4098000, asOf: "2025-12-29", note: "Valor total deliberado para 2026.", source: "am-ed-1-2026" },
+  { year: 2026, kind: "RECEITA", label: "Saldo de gerência integrado na 1.ª revisão", amount: 11886179.26, asOf: "2026-02-24", note: REVISION_NOTE, source: "am-ata-1-2026" },
+  { year: 2026, kind: "DESPESA", label: "Saldo: receita consignada às estradas integradas na autarquia", amount: 3582128.79, asOf: "2026-02-24", note: REVISION_NOTE, source: "am-ata-1-2026" },
+  { year: 2026, kind: "DESPESA", label: "Saldo: reforço para as juntas de freguesia", amount: 2000000, asOf: "2026-02-24", note: REVISION_NOTE, source: "am-ata-1-2026" },
+  { year: 2026, kind: "DESPESA", label: "Saldo: quotizações e transferências da OesteCIM", amount: 1652000, asOf: "2026-02-24", note: REVISION_NOTE, source: "am-ata-1-2026" },
+  { year: 2026, kind: "DESPESA", label: "Saldo: betuminoso para as vias municipais", amount: 1500000, asOf: "2026-02-24", note: REVISION_NOTE, source: "am-ata-1-2026" },
+
+  { year: 2026, kind: "SITUACAO_FINANCEIRA", label: "Total de disponibilidades", amount: 22128870.49, asOf: "2026-06-19", source: "am-info-2406" },
+  { year: 2026, kind: "SITUACAO_FINANCEIRA", label: "Dívida de médio e longo prazo (empréstimos e locações financeiras)", amount: 14445842.08, asOf: "2026-06-19", source: "am-info-2406" },
+  { year: 2026, kind: "SITUACAO_FINANCEIRA", label: "Dívida de curto prazo: acordos, apoios, delegação de competências e contratos-programa", amount: 66344.68, asOf: "2026-06-19", source: "am-info-2406" },
+  { year: 2026, kind: "SITUACAO_FINANCEIRA", label: "Dívida de curto prazo: outras dívidas a fornecedores e credores", amount: 1236163.42, asOf: "2026-06-19", source: "am-info-2406" },
+  { year: 2026, kind: "SITUACAO_FINANCEIRA", label: "Dívida total da autarquia", amount: 14180307.91, asOf: "2026-06-19", note: "Valor sem a contribuição das entidades relevantes para os limites de dívida, por falta de informação à data, conforme a própria fonte.", source: "am-info-2406" },
+  { year: 2026, kind: "SITUACAO_FINANCEIRA", label: "Limite da dívida total para 2026", amount: 135780133.43, asOf: "2026-06-19", source: "am-info-2406" },
+];
+
+/** Disponibilidades comunicadas à Assembleia Municipal, para comparar datas. */
+export const CASH_HISTORY = [
+  { date: "2025-12-22", amount: 16519528.59, source: "am-ata-9-2025" },
+  { date: "2026-02-23", amount: 11940893.2, source: "am-ata-1-2026" },
+  { date: "2026-06-19", amount: 22128870.49, source: "am-info-2406" },
 ];
 
 export type IssueSeed = {
@@ -327,7 +370,6 @@ export type IssueSeed = {
   decisions: string[];
   sources: string[];
   claims: { text: string; sources: string[] }[];
-  options?: string[];
 };
 
 export const ISSUES: IssueSeed[] = [
@@ -392,9 +434,8 @@ export const ISSUES: IssueSeed[] = [
       { date: "2026-10-14", label: "5.ª revisão na ordem de trabalhos" },
     ],
     decisions: ["Documentos previsionais", "revisão ao Orçamento", "revisão aos documentos previsionais"],
-    sources: ["am-ed-1-2026", "cm-orc-relatorio-2026", "cm-gop-2026", "am-ed-12-2026"],
-    claims: [],
-    options: ["Quero mais detalhe sobre a execução", "A informação atual é suficiente", "Preciso de mais informação"],
+    sources: ["am-ed-1-2026", "am-ata-9-2025", "cm-orc-relatorio-2026", "cm-gop-2026", "am-ed-12-2026"],
+    claims: [{ text: "Os documentos previsionais do Município foram aprovados por maioria, com 38 votos a favor e 4 contra.", sources: ["am-ata-9-2025"] }],
   },
   {
     slug: "impostos-municipais-2026",
@@ -404,7 +445,7 @@ export const ISSUES: IssueSeed[] = [
     stage: "Decidido para este ano",
     dates: [{ date: "2025-12-23", label: "Taxas deliberadas em sessão ordinária" }],
     decisions: ["Taxa de IMI", "Participação variável no IRS", "Derrama de 1,00%"],
-    sources: ["am-ed-1-2026"],
+    sources: ["am-ed-1-2026", "am-ata-9-2025"],
     claims: [],
   },
   {

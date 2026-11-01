@@ -4,7 +4,8 @@ import nextTs from "eslint-config-next/typescript";
 const config = [
   ...nextVitals,
   ...nextTs,
-  { ignores: [".next/**", "node_modules/**", "next-env.d.ts", "prisma/data/**"] },
+  { rules: { "@typescript-eslint/no-unused-vars": ["warn", { ignoreRestSiblings: true }] } },
+  { ignores: [".next/**", "node_modules/**", "next-env.d.ts", "prisma/data/**", "data/**"] },
 ];
 
 export default config;

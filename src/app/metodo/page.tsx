@@ -35,6 +35,7 @@ export default function MetodoPage() {
           <h2 className="font-serif text-2xl font-semibold">Recolha de dados</h2>
           <p className="mt-2">Usamos apenas informação pública e respeitamos o robots.txt, os termos de utilização e os limites de acesso de cada site. Cada importação guarda a origem, a data de recolha e uma impressão digital do ficheiro.</p>
           <p>Algumas informações ainda estão incompletas. Os mapas completos do orçamento e as deliberações do Executivo constam de PDF que o site da Câmara exclui do acesso automático, pelo que dependem de transcrição.</p>
+          <p>Damos sempre preferência a APIs e ficheiros oficiais. As alterações a registos existentes ficam guardadas, com o valor anterior, o novo e a fonte. Pode acompanhar cada origem em <a href="/estado-das-fontes" className="underline">Estado das fontes</a>.</p>
         </section>
       </div>
     </>

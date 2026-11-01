@@ -5,7 +5,11 @@ node_modules
 .env
 .env.*
 !.env.example
+data/*.db
+data/*.db-*
 data/raw
+data/cache
+data/backups
 tests
 *.md
 .claude

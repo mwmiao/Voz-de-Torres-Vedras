@@ -1,0 +1,72 @@
+name: Atualizar dados municipais
+
+on:
+  # Todos os dias às 05:30 UTC. Cada origem só é consultada quando a sua frequência o justifica.
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+    inputs:
+      origens:
+        description: "Origens a atualizar, separadas por espaços (vazio: todas)"
+        required: false
+        default: ""
+      forcar:
+        description: "Ignorar a frequência de cada origem"
+        type: boolean
+        default: false
+
+concurrency:
+  group: atualizar-dados
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: file:${{ github.workspace }}/data/voz-torres-vedras.db
+      APP_URL: http://localhost:1400
+      # Pode ser ajustado em Settings > Secrets and variables > Actions > Variables.
+      INGEST_DELAY_MS: ${{ vars.INGEST_DELAY_MS || '2000' }}
+      INGEST_DISABLED_SOURCES: ${{ vars.INGEST_DISABLED_SOURCES || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy
+      - run: npm run data:bootstrap
+      - name: Recolher fontes oficiais
+        id: recolha
+        env:
+          ORIGENS: ${{ inputs.origens }}
+          FORCAR: ${{ inputs.forcar }}
+        run: |
+          args=""
+          for origem in $ORIGENS; do args="$args --source $origem"; done
+          if [ "$FORCAR" = "true" ]; then args="$args --force"; fi
+          npm run update:data -- $args
+      - run: npm run data:validate
+      - run: npm test
+      # Sem registos novos ou alterados, não é criado nenhum pull request.
+      - if: steps.recolha.outputs.alterado == 'true'
+        run: npm run data:export
+      - if: steps.recolha.outputs.alterado == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: dados/atualizacao-automatica
+          add-paths: data/snapshot
+          commit-message: "Atualizar dados municipais"
+          title: "Atualizar dados municipais"
+          body: |
+            Atualização automática a partir das fontes oficiais.
+
+            Confirme as alterações em `data/snapshot`, em especial `UpdateEvent.jsonl` e `FieldChange.jsonl`.
+          labels: dados
+          delete-branch: true

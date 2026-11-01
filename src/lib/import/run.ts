@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
+import { searchKey } from "@/lib/search";
 import { BASE_DATASET_URL, normalizeBaseRecord, type BaseRecord, type NormalizedContract } from "./base";
 import { parseRows, slugify, validateBudgetRows, validateDecisionRows, type RowError } from "./records";
 
@@ -33,13 +34,18 @@ export async function importBaseContracts(
 
   for (const contract of contracts.values()) {
     const { sourceUrl, ...fields } = contract;
+    const shared = {
+      ...fields,
+      updatedAt: retrievedAt,
+      importRunId: run.id,
+      dataSourceId: "base-contratos",
+      searchText: searchKey(fields.title, fields.supplierName),
+    };
     await db.contract.upsert({
       where: { baseId: contract.baseId },
-      update: { ...fields, updatedAt: retrievedAt, importRunId: run.id },
+      update: shared,
       create: {
-        ...fields,
-        updatedAt: retrievedAt,
-        importRunId: run.id,
+        ...shared,
         sources: {
           connectOrCreate: {
             where: { url: sourceUrl },
@@ -51,6 +57,8 @@ export async function importBaseContracts(
               publishedAt: contract.publishedAt,
               retrievedAt,
               importRunId: run.id,
+              dataSourceId: "base-contratos",
+              searchText: searchKey(`Contrato n.º ${contract.baseId}`),
             },
           },
         },
@@ -109,6 +117,8 @@ export async function importDecisions(
         publishedAt: row.sourcePublishedAt ? new Date(row.sourcePublishedAt) : null,
         retrievedAt,
         importRunId: run.id,
+        dataSourceId: "transcricao-oficial",
+        searchText: searchKey(row.sourceTitle),
       },
     });
     const fields = {
@@ -122,6 +132,8 @@ export async function importDecisions(
       votesAgainst: row.votesAgainst ?? null,
       abstentions: row.abstentions ?? null,
       updatedAt: retrievedAt,
+      searchText: searchKey(row.title, row.proposalRef),
+      dataSourceId: "transcricao-oficial",
     };
     const slug = slugify(`${meetingSlug} ${row.itemNumber ?? ""} ${row.title}`);
     await db.decision.upsert({
@@ -160,7 +172,16 @@ export async function importBudget(
     const source = await db.source.upsert({
       where: { url: row.sourceUrl },
       update: {},
-      create: { name: row.sourceName, title: row.sourceTitle, url: row.sourceUrl, type: "ORCAMENTO", retrievedAt, importRunId: run.id },
+      create: {
+        name: row.sourceName,
+        title: row.sourceTitle,
+        url: row.sourceUrl,
+        type: "ORCAMENTO",
+        retrievedAt,
+        importRunId: run.id,
+        dataSourceId: "transcricao-oficial",
+        searchText: searchKey(row.sourceTitle),
+      },
     });
     const fields = {
       amountEur: row.amountEur,
@@ -168,6 +189,7 @@ export async function importBudget(
       note: row.note || null,
       asOf: row.asOf ? new Date(`${row.asOf}T12:00:00Z`) : null,
       updatedAt: retrievedAt,
+      dataSourceId: "transcricao-oficial",
     };
     const key = { year: row.year, kind: row.kind, label: row.label };
     const existing = await db.budgetEntry.findFirst({ where: key });

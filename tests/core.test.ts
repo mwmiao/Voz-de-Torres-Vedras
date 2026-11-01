@@ -5,6 +5,7 @@ import { formatEur, voteSummary } from "@/lib/format";
 import { isPersonNif, normalizeBaseRecord, parseDate } from "@/lib/import/base";
 import { parseRows, slugify, validateBudgetRows, validateDecisionRows } from "@/lib/import/records";
 import { isAllowedByRobots } from "@/lib/robots";
+import { searchKey } from "@/lib/search";
 import { isOfficialUrl, isVerified } from "@/lib/sources";
 
 describe("fontes", () => {
@@ -160,7 +161,12 @@ describe("filtros", () => {
     const where = decisionWhere({ orgao: "INVENTADO", resultado: "X", ano: "abc" });
     expect(where.sources).toEqual({ some: { official: true } });
     expect(where.outcome).toBeUndefined();
-    expect(where.OR).toBeUndefined();
+    expect(where.searchText).toBeUndefined();
+  });
+
+  it("pesquisa sem depender de acentos nem de maiúsculas", () => {
+    expect(decisionWhere({ q: "Moção" }).searchText).toEqual({ contains: "mocao" });
+    expect(searchKey("Proteção CIVIL")).toBe("protecao civil");
   });
 
   it("filtra por ano", () => {

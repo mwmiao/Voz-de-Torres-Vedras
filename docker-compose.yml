@@ -1,4 +1,5 @@
-# Usa a imagem publicada, por isso funciona só com este ficheiro (por exemplo, num NAS).
+# Só corre a aplicação: os dados ficam num ficheiro SQLite em ./data.
+# Funciona apenas com este ficheiro (por exemplo, num NAS), porque usa a imagem publicada.
 # Para compilar a partir do código: docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 
 services:
@@ -8,41 +9,13 @@ services:
     ports:
       - "${APP_PORT:-1400}:1400"
     environment:
-      DATABASE_URL: postgresql://voz:${POSTGRES_PASSWORD:-voz_local}@db:5432/voz_tv?schema=public
       # Endereço público, usado no mapa do site.
       APP_URL: ${APP_URL:-http://localhost:1400}
       PORT: "1400"
-      RUN_SEED: ${RUN_SEED:-true}
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
-  db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_USER: voz
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voz_local}
-      POSTGRES_DB: voz_tv
-    ports:
-      - "127.0.0.1:${DB_PORT:-5432}:5432"
+      # De quantas em quantas horas verifica as origens oficiais. 0 desliga.
+      UPDATE_INTERVAL_HOURS: ${UPDATE_INTERVAL_HOURS:-24}
+      # Origens a não recolher, separadas por vírgulas (por exemplo, em máquinas com pouca memória).
+      INGEST_DISABLED_SOURCES: ${INGEST_DISABLED_SOURCES:-}
     volumes:
-      - db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U voz -d voz_tv"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      - ./data:/app/data
     restart: unless-stopped
-
-  # Opcional: docker compose --profile tools up
-  adminer:
-    image: adminer:5
-    profiles: ["tools"]
-    ports:
-      - "8080:8080"
-    depends_on:
-      - db
-
-volumes:
-  db-data:

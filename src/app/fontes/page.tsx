@@ -5,6 +5,7 @@ import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { queryString } from "@/lib/filters";
+import { searchKey } from "@/lib/search";
 import { formatNumber } from "@/lib/format";
 import { SOURCE_TYPE_LABEL } from "@/lib/sources";
 
@@ -18,7 +19,8 @@ export default async function FontesPage({ searchParams }: { searchParams: Promi
   const type = params.tipo && params.tipo in SOURCE_TYPE_LABEL ? (params.tipo as SourceType) : undefined;
   const page = Math.max(1, Number(params.pagina) || 1);
   const q = params.q?.trim() ?? "";
-  const where = { type, title: q ? { contains: q, mode: "insensitive" as const } : undefined };
+  const key = searchKey(q);
+  const where = { type, searchText: key ? { contains: key } : undefined };
   const [sources, total, groups, updated] = await Promise.all([
     db.source.findMany({
       where,

@@ -12,7 +12,7 @@ Projeto independente, sem ligação ao Município de Torres Vedras.
 
 ## Princípios
 
-- **Sem fonte oficial, não é facto.** Afirmações sem fonte ficam como «Não verificado», fora do conteúdo factual. Decisões sem documento oficial não entram no Registo.
+- **Sem fonte oficial, não é facto.** Afirmações e documentos sem fonte oficial ficam como «Não verificado». Decisões sem documento oficial não entram no Registo.
 - **Registo e contexto, sempre separados.** Os resumos editoriais estão identificados como tal.
 - **Neutralidade.** Sem acusações, classificações de pessoas ou recomendações de voto.
 - **Sem estimativas.** Dados não publicados pela fonte aparecem como tal. Valores aproximados na fonte aparecem com «cerca de».
@@ -21,33 +21,31 @@ Projeto independente, sem ligação ao Município de Torres Vedras.
 
 | Página | Conteúdo |
 | --- | --- |
-| `/` | Resumo, próximas reuniões e decisões recentes |
+| `/` | Resumo, atualizações recentes, próximas reuniões e decisões |
 | `/orcamento` | Orçamento, despesa identificada e situação financeira |
-| `/contratos` | Contratos do Portal BASE, com filtros, ordenação e somas descritivas |
+| `/contratos` | Contratos, modificações e procedimentos, com filtros e somas descritivas |
 | `/reunioes` | Decisões pesquisáveis e lista de reuniões, com página por reunião |
 | `/dossies` | Assuntos municipais com contexto, datas e decisões |
 | `/camara` | Diretório de eleitos e comissões |
-| `/fontes` | Todas as fontes, pesquisáveis |
+| `/fontes` | Todas as fontes, incluindo regulamentos e editais, pesquisáveis |
+| `/estado-das-fontes` | Origens de dados, última atualização, estado e erros |
 | `/metodo`, `/privacidade` | Método e tratamento de dados |
 
 Exportações CSV: `/dados/decisoes.csv`, `/dados/contratos.csv` (ambas seguem os filtros da página), `/dados/reunioes.csv` e `/dados/orcamento.csv`.
 
-Cada conjunto e registo mostra a «Última atualização», que é a data em que foi recolhido ou verificado na fonte oficial.
-
 ## Tecnologia
 
-Next.js (App Router) com TypeScript, Tailwind CSS, PostgreSQL com Prisma, Docker e GitHub Actions. A aplicação usa a **porta 1400**.
+Next.js (App Router) com TypeScript, Tailwind CSS, SQLite com Prisma, Docker e GitHub Actions. A aplicação usa a **porta 1400**.
 
 ## Desenvolvimento local
 
-Requisitos: Node.js 22 ou superior e PostgreSQL 15 ou superior em UTF-8 (ou Docker só para a base de dados).
+Requisito: Node.js 22 ou superior.
 
 ```bash
 cp .env.example .env
 npm install
-docker compose up -d db
 npm run db:deploy
-npm run db:seed
+npm run data:bootstrap
 npm run dev
 ```
 
@@ -59,39 +57,158 @@ Verificações:
 npm run typecheck
 npm run lint
 npm test
+npm run data:validate
 ```
 
-## Base de dados
+## Base de dados SQLite
+
+Os dados ficam num único ficheiro, `data/voz-torres-vedras.db`, que não entra no Git. A versão pública dos dados está em `data/snapshot/`, com um ficheiro `.jsonl` por tabela.
 
 | Comando | Função |
 | --- | --- |
+| `npm run db:deploy` | Cria o ficheiro, se não existir, e aplica as migrações |
 | `npm run db:migrate` | Cria uma migração em desenvolvimento |
-| `npm run db:deploy` | Aplica as migrações |
-| `npm run db:seed` | Carrega os dados; pode ser repetido |
+| `npm run data:bootstrap` | Numa base vazia, carrega `data/snapshot` ou, na sua falta, o seed |
+| `npm run db:seed` | Carrega os dados transcritos, sem as recolhas automáticas |
+| `npm run data:backup` | Grava uma cópia consistente em `data/backups/` |
+| `npm run data:export` | Escreve a base de dados em `data/snapshot/` |
+| `npm run data:validate` | Confirma fontes oficiais e a integridade do ficheiro |
 
 O modelo está em [prisma/schema.prisma](prisma/schema.prisma). Os votos guardados são apenas votos de eleitos em órgãos municipais, tal como constam das fontes oficiais.
 
-O seed carrega dados reais, transcritos de fontes oficiais consultadas em 1 de novembro de 2026 ([prisma/data/real.ts](prisma/data/real.ts)). Não há dados fictícios.
+### Fazer e repor cópias de segurança
 
-## Importação de dados públicos
+```bash
+npm run data:backup
+```
+
+O comando funciona com o site a correr. Para repor uma cópia, pare a aplicação, substitua o ficheiro e volte a arrancar:
+
+```bash
+docker compose down
+cp data/backups/voz-torres-vedras-AAAA-MM-DDTHH-MM-SS.db data/voz-torres-vedras.db
+docker compose up -d
+```
+
+### Substituir a base de dados
+
+Para recomeçar a partir da cópia publicada, pare a aplicação, apague `data/voz-torres-vedras.db` e arranque de novo. O contentor recria o ficheiro e carrega a cópia incluída na imagem. Sem Docker:
+
+```bash
+rm data/voz-torres-vedras.db
+npm run db:deploy
+npm run data:bootstrap
+```
+
+## Atualização de dados
+
+O módulo [ingestion/](ingestion/) recolhe, valida e grava os dados das fontes oficiais.
+
+| Pasta | Função |
+| --- | --- |
+| `ingestion/sources` | A recolha de cada origem |
+| `ingestion/fetchers` | Acesso HTTP respeitoso, API do WordPress e dados abertos |
+| `ingestion/parsers` | Leitura de JSON, HTML e PDF |
+| `ingestion/normalizers` | Datas, URL e texto uniformes |
+| `ingestion/validators` | Campos obrigatórios e deteção de mudanças de estrutura |
+| `ingestion/updaters` | Comparação, gravação e histórico de alterações |
+
+O catálogo de origens, com identificador, URL, frequência, método, validação e política de acesso, está em [src/lib/source-catalog.ts](src/lib/source-catalog.ts).
+
+### Origens
+
+Antes de recolher páginas, verificou-se se existia API, ficheiro ou índice oficial.
+
+| Origem | Método | Frequência | Dados |
+| --- | --- | --- | --- |
+| `am-documentos` | API do site (WordPress) | Diária | Atas, editais, moções e relatórios |
+| `am-editais` | API do site (WordPress) | Diária | Editais e sessões convocadas |
+| `am-situacao-financeira` | Ficheiro PDF, localizado pela API | Diária | Disponibilidades e dívida |
+| `base-contratos` | API de dados.gov.pt e ficheiro | Semanal | Contratos |
+| `base-anuncios` | API de dados.gov.pt e ficheiro | Semanal | Concursos e anúncios |
+| `base-modificacoes` | API de dados.gov.pt e ficheiro | Semanal | Modificações contratuais |
+| `am-composicao` | Página pública | Semanal | Alterações à composição e às comissões |
+| `cm-editais` | Página pública | Diária | Editais e reuniões convocadas |
+| `cm-atas` | Página pública | Diária | Atas e minutas |
+| `cm-gestao` | Página pública | Semanal | Orçamentos e prestação de contas |
+| `cm-regulamentos` | Página pública | Semanal | Regulamentos |
+| `cm-contratacao` | Página pública | Semanal | Procedimentos |
+| `cm-composicao` | Página pública | Semanal | Eleitos e pelouros |
+| `dre-legislacao` | Desativada | Sem recolha | Ver abaixo |
+
+As origens da Câmara usam páginas porque o site não tem API, feed nem mapa do site.
+
+**Limites conhecidos:**
+
+- O `robots.txt` da Câmara exclui `/assets/upload` e `/ficheiros/`, onde estão os PDF. As ligações são guardadas, mas os PDF não são lidos. Por isso, os valores por rubrica do orçamento e as deliberações do Executivo não são extraídos. Podem ser importados depois de transcritos, ou pedidos à Câmara em formato aberto.
+- O Diário da República não tem API pública, e os seus mapas do site não indicam a entidade. Filtrar Torres Vedras obrigaria a abrir cada ato, pelo que a origem está desativada. Os anúncios de procedimentos do Município chegam por `base-anuncios`.
+- As deliberações dos editais da Assembleia são guardadas como documentos. A transcrição ponto a ponto continua a ser feita à mão, para não publicar resultados oficiais mal interpretados.
+
+### Regras de recolha
+
+- Só se recolhem páginas públicas e nunca se contornam restrições técnicas.
+- O `robots.txt` é sempre consultado. Se não puder ser lido, uma página pública não é recolhida.
+- Há um intervalo entre pedidos no mesmo domínio (`INGEST_DELAY_MS`, 1500 ms por omissão) e um `User-Agent` identificado.
+- Respostas 429 ou 503 param a origem nessa execução.
+- As páginas não alteradas não voltam a ser interpretadas, e os ficheiros do IMPIC só são descarregados quando há nova revisão.
+- Contactos pessoais publicados nas páginas não são guardados.
+
+### Integridade dos dados
+
+- Duplicados evitados com chaves naturais: identificador do contrato, URL do documento ou órgão e data da reunião.
+- Cada alteração guarda o campo, o valor anterior, o valor novo, a fonte e a data.
+- Um registo sem fonte válida é recusado. Um documento fora dos domínios oficiais fica como «Não verificado».
+- O URL de uma fonte é a sua chave, pelo que nunca é substituído. Os títulos transcritos à mão também não.
+- Se uma origem falhar, o que já existe não é alterado e o erro aparece em `/estado-das-fontes`.
+- Cada registo guarda a origem, o estado (`NEW`, `UPDATED`, `UNCHANGED` ou `FAILED`), a data de recolha e, quando útil, a impressão digital do conteúdo.
+
+Na primeira execução de uma origem, o arquivo existente entra sem aparecer como novidade. Só o que tem menos de 45 dias surge em «Atualizações recentes».
+
+### Atualização manual
+
+```bash
+npm run update:data
+```
+
+Mostra um resumo de registos novos, atualizados, inalterados e falhados. Cada origem só é consultada se a sua frequência o justificar.
+
+```bash
+npm run update:data -- --source cm-editais --source base-anuncios
+```
+
+```bash
+npm run update:data -- --force
+```
+
+Com `--strict`, o comando termina com erro se alguma origem falhar. No contentor:
+
+```bash
+docker compose exec app npx tsx ingestion/run.ts --force
+```
+
+### Atualização agendada
+
+Há duas formas, que podem ser usadas em conjunto.
+
+**No contentor.** Com `UPDATE_INTERVAL_HOURS` (24 por omissão, 0 desliga), o site consulta as origens por si e atualiza a base de dados em `./data`.
+
+**No GitHub Actions.** O workflow [atualizar-dados.yml](.github/workflows/atualizar-dados.yml) corre todos os dias às 05:30 UTC. Recolhe as origens, valida, corre os testes e exporta `data/snapshot`. Só abre um pull request se houver alterações, para rever antes de entrar em `main`.
+
+Para o configurar:
+
+1. Em **Settings > Actions > General > Workflow permissions**, ative **Read and write permissions** e **Allow GitHub Actions to create and approve pull requests**.
+2. Para mudar a hora, edite o `cron` no workflow.
+3. Opcionalmente, em **Settings > Secrets and variables > Actions > Variables**, defina `INGEST_DELAY_MS` e `INGEST_DISABLED_SOURCES`.
+
+Não são necessários segredos: todas as origens são públicas. Os pull requests criados com o token do GitHub não acionam o CI. Os testes correm dentro do próprio workflow, e o CI corre depois da integração em `main`.
+
+### Atualização a pedido
+
+Em **Actions > Atualizar dados municipais > Run workflow**, pode indicar origens e ignorar a frequência.
+
+### Importação manual
 
 Cada importação guarda URL de origem, data de recolha e SHA-256 do ficheiro. Linhas sem URL de um domínio oficial são recusadas. A lista de domínios está em [src/lib/sources.ts](src/lib/sources.ts).
-
-### Contratos (Portal BASE)
-
-```bash
-npm run fetch:dataset -- "<url do contratos2026.zip em dados.gov.pt>" contratos2026.zip
-```
-
-Descompacte o ficheiro em `data/raw/` e importe. Só entram os contratos do Município (NIF 502173653) e dos SMAS (NIF 680015973):
-
-```bash
-npm run import -- base data/raw/Contratos2026.json
-```
-
-Quando o fornecedor é uma pessoa singular, o nome e o NIF não são republicados: a linha remete para o Portal BASE.
-
-### Decisões (CSV ou JSON)
 
 ```bash
 npm run import -- decisoes data/decisoes.csv https://www.am-tvedras.pt/sessoes/editais/
@@ -99,31 +216,51 @@ npm run import -- decisoes data/decisoes.csv https://www.am-tvedras.pt/sessoes/e
 
 Colunas: `body`, `meetingDate` (AAAA-MM-DD), `meetingTitle`, `itemNumber`, `proposalRef`, `title`, `outcome`, `voteMode`, `votesFor`, `votesAgainst`, `abstentions`, `sourceName`, `sourceTitle`, `sourceUrl`, `sourceType`, `sourcePublishedAt`.
 
-### Orçamento (CSV ou JSON)
-
 ```bash
 npm run import -- orcamento data/orcamento.csv https://www.cm-tvedras.pt/documentos/gestao/
 ```
 
 Colunas: `year`, `kind` (`RESUMO`, `RECEITA`, `DESPESA` ou `SITUACAO_FINANCEIRA`), `label`, `amountEur`, `approximate`, `asOf`, `note`, `sourceName`, `sourceTitle`, `sourceUrl`.
 
-### Regras de acesso a sites públicos
+### Adicionar uma origem
 
-`npm run fetch:dataset` consulta o `robots.txt`, identifica-se, espera entre pedidos e para se o servidor pedir para abrandar.
+1. Procure primeiro uma API, ficheiro, feed ou mapa do site oficial, e leia o `robots.txt` e os termos de utilização.
+2. Acrescente a origem a [src/lib/source-catalog.ts](src/lib/source-catalog.ts).
+3. Escreva o parser em `ingestion/parsers`, a devolver registos do tipo definido em [ingestion/types.ts](ingestion/types.ts).
+4. Registe a recolha em `COLLECTORS`, em [ingestion/sources/index.ts](ingestion/sources/index.ts), com `assertMinimum` para detetar mudanças de estrutura.
+5. Se a entidade for nova, acrescente o domínio a [src/lib/sources.ts](src/lib/sources.ts).
+6. Acrescente testes em [tests/ingestion.test.ts](tests/ingestion.test.ts). Um teste confirma que catálogo e recolhas coincidem.
 
-O `robots.txt` de `cm-tvedras.pt` exclui `/assets/upload` e `/ficheiros/`, onde estão os PDF de atas e orçamentos. A plataforma liga a esses documentos, mas não os recolhe automaticamente. Por isso, as deliberações do Executivo e os mapas completos do orçamento têm de ser transcritos à mão ou pedidos à Câmara em formato aberto.
+### Quando um site muda de estrutura
+
+A recolha para com a mensagem «Estrutura da fonte alterada», os dados existentes mantêm-se e a origem aparece com erro em `/estado-das-fontes`. Para resolver:
+
+1. Abra a página oficial e compare-a com o parser em `ingestion/parsers`.
+2. Atualize o parser e o teste correspondente.
+3. Confirme com `npm run update:data -- --source <id>`.
+
+Enquanto isso, pode desativar a origem em `INGEST_DISABLED_SOURCES`. Não reduza o mínimo em `assertMinimum` para ultrapassar o erro sem perceber a causa.
 
 ## Docker
 
-Aplicação e PostgreSQL, a partir da imagem publicada. Basta o ficheiro `docker-compose.yml`, por isso serve também para um NAS:
+Só corre a aplicação. Basta o ficheiro `docker-compose.yml`, por isso serve também para um NAS:
 
 ```bash
 docker compose up -d
 ```
 
-Abra <http://localhost:1400>.
+Abra <http://localhost:1400>. No primeiro arranque, a imagem cria `./data/voz-torres-vedras.db` e carrega a cópia de dados incluída.
 
-Noutra máquina, defina num ficheiro `.env`, ao lado do `docker-compose.yml`, `APP_URL` (o endereço público) e `POSTGRES_PASSWORD` (apenas letras e números). Também pode definir `APP_PORT` e `DB_PORT`.
+| Variável | Valor por omissão | Função |
+| --- | --- | --- |
+| `APP_URL` | `http://localhost:1400` | Endereço público, usado no mapa do site |
+| `APP_PORT` | `1400` | Porta no anfitrião |
+| `UPDATE_INTERVAL_HOURS` | `24` | Frequência das verificações; 0 desliga |
+| `INGEST_DISABLED_SOURCES` | Vazio | Origens a não recolher |
+
+A origem `base-contratos` descomprime um ficheiro com centenas de MB. Em máquinas com pouca memória, desative-a com `INGEST_DISABLED_SOURCES=base-contratos` e use a cópia que chega com cada imagem.
+
+O ficheiro SQLite deve ficar num disco local. Em pastas de rede (NFS ou SMB), o SQLite pode não conseguir bloquear o ficheiro corretamente.
 
 Para compilar a partir do código:
 
@@ -131,27 +268,9 @@ Para compilar a partir do código:
 docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 ```
 
-Com o Adminer, para desenvolvimento, em <http://localhost:8080>:
-
-```bash
-docker compose --profile tools up -d
-```
-
-Imagem publicada, em qualquer servidor:
-
-```bash
-docker run -p 1400:1400 \
-  -e DATABASE_URL="postgresql://..." \
-  -e APP_URL="https://exemplo.pt" \
-  -e RUN_SEED="true" \
-  eazyeight/voz-de-torres-vedras:latest
-```
-
-As migrações correm no arranque. Com `RUN_SEED=true`, o seed também corre em cada arranque e repõe os dados da versão publicada.
-
 ## Publicação no Docker Hub
 
-O workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) corre em pushes para `main` e em etiquetas `v*.*.*`. Verifica tipos, lint, testes, migrações, seed e build, e testa a aplicação na porta 1400. Só depois publica `docker.io/eazyeight/voz-de-torres-vedras`.
+O workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) corre em pushes para `main` e em etiquetas `v*.*.*`. Verifica tipos, lint, testes, migrações e dados, compila e testa a aplicação na porta 1400. Só depois publica `docker.io/eazyeight/voz-de-torres-vedras`.
 
 Usa os segredos do repositório `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN`.
 
@@ -167,7 +286,7 @@ git push origin v0.1.0
 
 ## Instalação em produção
 
-A imagem funciona numa VPS europeia, atrás de um proxy com HTTPS. Em Vercel ou Netlify, defina as mesmas variáveis e execute `npm run db:deploy` na publicação, com um PostgreSQL gerido.
+A imagem funciona numa VPS europeia, atrás de um proxy com HTTPS, com um volume persistente em `/app/data`. Vercel e Netlify não são adequados nesta versão, porque o seu sistema de ficheiros é temporário e o SQLite precisa de um ficheiro persistente.
 
 ## Licença
 

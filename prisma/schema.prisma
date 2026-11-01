@@ -1,15 +1,17 @@
-// Voz de Torres Vedras — modelo de dados de uma plataforma pública, só de leitura.
+// Voz de Torres Vedras — modelo de dados de uma plataforma pública, só de leitura, em SQLite.
 //
 // Regras estruturais:
 // - Fontes: tudo o que é factual liga a registos `Source`.
 // - `updatedAt`: data da última recolha ou verificação na fonte, não da escrita na base de dados.
+// - `dataSourceId`: identificador da origem no catálogo de src/lib/source-catalog.ts.
+// - `searchText`: texto sem acentos nem maiúsculas, porque o LIKE do SQLite só ignora maiúsculas em ASCII.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -62,6 +64,30 @@ enum SourceType {
   DIARIO_REPUBLICA
   PAGINA_OFICIAL
   DATASET
+  REGULAMENTO
+  CONCURSO
+}
+
+enum UpdateStatus {
+  NEW
+  UPDATED
+  UNCHANGED
+  FAILED
+}
+
+enum SourceRunStatus {
+  OK
+  PARCIAL
+  ERRO
+  NUNCA_EXECUTADA
+}
+
+enum UpdateCategory {
+  CONTRATO
+  ORCAMENTO
+  REUNIAO
+  DOCUMENTO
+  ELEITO
 }
 
 enum ContentKind {
@@ -120,6 +146,8 @@ model Meeting {
   agendaStatus  AgendaStatus  @default(PUBLICADA)
   participation String?
   updatedAt     DateTime      @default(now())
+  dataSourceId  String?
+  updateStatus  UpdateStatus  @default(UNCHANGED)
   decisions     Decision[]
   sources       Source[]
 
@@ -141,6 +169,9 @@ model Decision {
   // Sentido de voto por grupo, quando a ata o indica.
   voteNote     String?
   updatedAt    DateTime @default(now())
+  searchText   String   @default("")
+  dataSourceId String?
+  updateStatus UpdateStatus @default(UNCHANGED)
   meeting      Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   votes        VoteRecord[]
   issues       Issue[]
@@ -171,10 +202,12 @@ model Official {
   // Nulo quando a fonte consultada não indica partido ou coligação.
   party       String?
   parish      String?
-  portfolios  String[]
+  portfolios  Json     @default("[]")
   order       Int      @default(100)
   active      Boolean  @default(true)
   updatedAt   DateTime @default(now())
+  dataSourceId String?
+  updateStatus UpdateStatus @default(UNCHANGED)
   memberships CommitteeMembership[]
   votes       VoteRecord[]
   sources     Source[]
@@ -213,6 +246,13 @@ model Source {
   publishedAt DateTime?
   retrievedAt DateTime
   excerpt     String?
+  // Dados estruturados normalizados da fonte, em JSON.
+  data        Json?
+  contentHash String?
+  firstSeenAt DateTime   @default(now())
+  searchText  String     @default("")
+  dataSourceId String?
+  updateStatus UpdateStatus @default(UNCHANGED)
   importRunId String?
   importRun   ImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
 
@@ -254,18 +294,40 @@ model Contract {
   contractType     String?
   cpvCode          String?
   cpvLabel         String?
-  priceEur         Decimal    @db.Decimal(14, 2)
+  priceEur         Decimal   
   signedAt         DateTime?
   publishedAt      DateTime?
   durationDays     Int?
   updatedAt        DateTime   @default(now())
+  searchText       String     @default("")
+  dataSourceId     String?
+  updateStatus     UpdateStatus @default(UNCHANGED)
   importRunId      String?
   importRun        ImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
   sources          Source[]
+  modifications    ContractModification[]
 
   @@index([signedAt])
   @@index([awardingNif])
   @@index([procedureType])
+}
+
+model ContractModification {
+  id         String    @id @default(cuid())
+  baseId     String
+  date       DateTime?
+  actType    String?
+  grounds    String?
+  // Preço do contrato depois da modificação, quando publicado.
+  newPriceEur Decimal?
+  newDurationDays Int?
+  publishedAt DateTime?
+  sourceUrl  String
+  dataSourceId String?
+  updatedAt  DateTime  @default(now())
+  contract   Contract  @relation(fields: [baseId], references: [baseId], onDelete: Cascade)
+
+  @@unique([baseId, date, actType])
 }
 
 model BudgetEntry {
@@ -273,30 +335,84 @@ model BudgetEntry {
   year        Int
   kind        BudgetKind
   label       String
-  amountEur   Decimal    @db.Decimal(14, 2)
+  amountEur   Decimal   
   // Verdadeiro quando a fonte indica um valor aproximado ("cerca de").
   approximate Boolean    @default(false)
   asOf        DateTime?
   note        String?
   updatedAt   DateTime   @default(now())
+  dataSourceId String?
+  updateStatus UpdateStatus @default(UNCHANGED)
   sources     Source[]
 
   @@index([year, kind])
 }
 
-// ---------- Importação ----------
+// ---------- Importação e atualizações ----------
 
 model ImportRun {
-  id          String     @id @default(cuid())
-  dataset     String
-  sourceUrl   String
-  fileName    String
-  sha256      String
-  retrievedAt DateTime
-  imported    Int        @default(0)
-  skipped     Int        @default(0)
-  errors      Json?
-  createdAt   DateTime   @default(now())
-  sources     Source[]
-  contracts   Contract[]
+  id           String     @id @default(cuid())
+  dataset      String
+  dataSourceId String?
+  sourceUrl    String
+  fileName     String
+  sha256       String
+  retrievedAt  DateTime
+  imported     Int        @default(0)
+  skipped      Int        @default(0)
+  newCount     Int        @default(0)
+  updatedCount Int        @default(0)
+  unchangedCount Int      @default(0)
+  failedCount  Int        @default(0)
+  errors       Json?
+  createdAt    DateTime   @default(now())
+  sources      Source[]
+  contracts    Contract[]
+  events       UpdateEvent[]
+}
+
+// Estado de cada origem do catálogo. A definição da origem está no código.
+model DataSourceState {
+  id            String          @id
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastStatus    SourceRunStatus @default(NUNCA_EXECUTADA)
+  lastError     String?
+  // Última revisão publicada pela origem, para não voltar a descarregar o que não mudou.
+  revision      String?
+  newCount      Int             @default(0)
+  updatedCount  Int             @default(0)
+  unchangedCount Int            @default(0)
+  failedCount   Int             @default(0)
+}
+
+// Histórico público: o que entrou ou mudou, quando e com que fonte.
+model UpdateEvent {
+  id           String         @id @default(cuid())
+  dataSourceId String
+  runId        String?
+  entityType   String
+  entityKey    String
+  status       UpdateStatus
+  category     UpdateCategory
+  title        String
+  sourceUrl    String
+  occurredAt   DateTime
+  run          ImportRun?     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  changes      FieldChange[]
+
+  @@index([occurredAt])
+  @@index([entityType, entityKey])
+}
+
+// Versões anteriores: cada campo alterado guarda o valor antigo e o novo.
+model FieldChange {
+  id       String      @id @default(cuid())
+  eventId  String
+  field    String
+  oldValue String?
+  newValue String?
+  event    UpdateEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
 }

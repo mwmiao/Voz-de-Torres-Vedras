@@ -1,5 +1,6 @@
 import type { Body, Outcome, Prisma } from "@prisma/client";
 import { BODY_LABEL, OUTCOME_LABEL } from "./format";
+import { searchKey } from "./search";
 
 export type SearchParams = Record<string, string | undefined>;
 
@@ -7,7 +8,7 @@ export type SearchParams = Record<string, string | undefined>;
 export const SOURCED_DECISION = { sources: { some: { official: true } } } as const;
 
 export function decisionWhere(params: SearchParams): Prisma.DecisionWhereInput {
-  const q = params.q?.trim();
+  const q = searchKey(params.q).trim();
   const body = params.orgao && params.orgao in BODY_LABEL ? (params.orgao as Body) : undefined;
   const outcome = params.resultado && params.resultado in OUTCOME_LABEL ? (params.resultado as Outcome) : undefined;
   const year = /^\d{4}$/.test(params.ano ?? "") ? Number(params.ano) : undefined;
@@ -18,9 +19,7 @@ export function decisionWhere(params: SearchParams): Prisma.DecisionWhereInput {
       body,
       date: year ? { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } : undefined,
     },
-    OR: q
-      ? [{ title: { contains: q, mode: "insensitive" } }, { proposalRef: { contains: q, mode: "insensitive" } }]
-      : undefined,
+    searchText: q ? { contains: q } : undefined,
   };
 }
 
@@ -31,13 +30,11 @@ export function decisionOrder(params: SearchParams): Prisma.DecisionOrderByWithR
 }
 
 export function contractWhere(params: SearchParams): Prisma.ContractWhereInput {
-  const q = params.q?.trim();
+  const q = searchKey(params.q).trim();
   return {
     awardingNif: params.entidade || undefined,
     procedureType: params.procedimento || undefined,
-    OR: q
-      ? [{ title: { contains: q, mode: "insensitive" } }, { supplierName: { contains: q, mode: "insensitive" } }]
-      : undefined,
+    searchText: q ? { contains: q } : undefined,
   };
 }
 

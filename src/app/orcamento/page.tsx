@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Bars } from "@/components/Bars";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { OfficialBadge, SourceChips } from "@/components/Receipts";
@@ -8,7 +9,7 @@ import { formatDate, formatEur } from "@/lib/format";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Orçamento", description: "Orçamento, despesa e situação financeira do Município de Torres Vedras, com fontes oficiais." };
 
-const HISTORY_LABEL = "Histórico de disponibilidades";
+const HISTORY_LABEL = "Total de disponibilidades";
 
 const PORTALS = [
   { label: "Documentos de gestão da Câmara Municipal", url: "https://www.cm-tvedras.pt/documentos/gestao/" },
@@ -20,17 +21,18 @@ const PORTALS = [
 export default async function OrcamentoPage() {
   const [entries, docs] = await Promise.all([
     db.budgetEntry.findMany({ include: { sources: true }, orderBy: [{ amountEur: "desc" }] }),
-    db.source.findMany({ where: { type: "ORCAMENTO" }, orderBy: { publishedAt: { sort: "desc", nulls: "last" } } }),
+    db.source.findMany({ where: { type: "ORCAMENTO", official: true }, orderBy: { publishedAt: { sort: "desc", nulls: "last" } }, take: 24 }),
   ]);
   const summary = entries.filter((entry) => entry.kind === "RESUMO");
   const spending = entries.filter((entry) => entry.kind === "DESPESA");
   const revenue = entries.filter((entry) => entry.kind === "RECEITA");
-  const facts = entries.filter((entry) => entry.kind === "SITUACAO_FINANCEIRA" && entry.label !== HISTORY_LABEL);
-  const history = entries
+  const financial = entries.filter((entry) => entry.kind === "SITUACAO_FINANCEIRA");
+  const asOf = financial.map((entry) => entry.asOf).filter((date) => date !== null).sort((a, b) => b.getTime() - a.getTime())[0];
+  const facts = financial.filter((entry) => entry.asOf?.getTime() === asOf?.getTime());
+  const history = financial
     .filter((entry) => entry.label === HISTORY_LABEL)
     .sort((a, b) => a.asOf!.getTime() - b.asOf!.getTime());
   const updated = entries.map((entry) => entry.updatedAt).sort((a, b) => b.getTime() - a.getTime())[0];
-  const asOf = facts[0]?.asOf;
 
   const amount = (entry: { approximate: boolean; amountEur: { toString(): string } }) =>
     `${entry.approximate ? "Cerca de " : ""}${formatEur(entry.amountEur)}`;
@@ -117,6 +119,7 @@ export default async function OrcamentoPage() {
           <ul className="mt-2 grid gap-x-6 gap-y-1 text-sm md:grid-cols-2">
             {docs.map((doc) => <li key={doc.id}><a href={doc.url} target="_blank" rel="noopener noreferrer" className="underline">{doc.title}</a></li>)}
           </ul>
+          <p className="mt-3 text-sm"><Link href="/fontes?tipo=ORCAMENTO" className="underline">Ver todos os documentos orçamentais</Link></p>
           <h3 className="mt-5 font-semibold">Portais oficiais</h3>
           <ul className="mt-1 space-y-1 text-sm">
             {PORTALS.map((portal) => <li key={portal.url}><a href={portal.url} target="_blank" rel="noopener noreferrer" className="underline">{portal.label}</a></li>)}

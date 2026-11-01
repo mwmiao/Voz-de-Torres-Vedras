@@ -8,6 +8,7 @@ const OFFICIAL_HOSTS = [
   "dre.pt",
   "diariodarepublica.pt",
   "dados.gov.pt",
+  "acingov.pt",
   "portaldatransparencia.gov.pt",
   "transparencia.gov.pt",
   "portalautarquico.dgal.gov.pt",
@@ -53,4 +54,6 @@ export const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
   DIARIO_REPUBLICA: "Diário da República",
   PAGINA_OFICIAL: "Página oficial",
   DATASET: "Dados abertos",
+  REGULAMENTO: "Regulamento",
+  CONCURSO: "Procedimento",
 };

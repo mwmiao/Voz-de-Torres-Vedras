@@ -16,22 +16,8 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: voz
-          POSTGRES_PASSWORD: voz_ci
-          POSTGRES_DB: voz_tv
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U voz -d voz_tv"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     env:
-      DATABASE_URL: postgresql://voz:voz_ci@localhost:5432/voz_tv?schema=public
+      DATABASE_URL: file:${{ github.workspace }}/data/voz-torres-vedras.db
       APP_URL: http://localhost:1400
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +30,8 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npx prisma migrate deploy
-      - run: npm run db:seed
+      - run: npm run data:bootstrap
+      - run: npm run data:validate
       - run: npm run build
       - name: Testar a aplicação na porta 1400
         run: |
@@ -56,7 +43,8 @@ jobs:
           done
           curl -fsS http://127.0.0.1:1400/ | grep -q "com fontes oficiais"
           curl -fsS http://127.0.0.1:1400/reunioes | grep -q "Edital"
-          curl -fsS http://127.0.0.1:1400/dados/contratos.csv | grep -q "Portal\|base.gov.pt"
+          curl -fsS http://127.0.0.1:1400/estado-das-fontes | grep -q "Estado das fontes"
+          curl -fsS http://127.0.0.1:1400/dados/contratos.csv | grep -q "base.gov.pt"
 
   publish:
     # Só publica depois de os testes passarem, e nunca a partir de pull requests.

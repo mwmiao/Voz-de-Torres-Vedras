@@ -27,6 +27,7 @@ export default async function OfficialPage({ params }: Props) {
     },
   });
   if (!official) notFound();
+  const portfolios = official.portfolios as string[];
 
   return (
     <>
@@ -40,10 +41,10 @@ export default async function OfficialPage({ params }: Props) {
             <h2 className="font-serif text-xl font-semibold">Partido ou coligação</h2>
             <p className="mt-1">{official.party ?? "Não indicado na fonte consultada."}</p>
           </section>
-          {official.portfolios.length > 0 ? (
+          {portfolios.length > 0 ? (
             <section>
               <h2 className="font-serif text-xl font-semibold">Pelouros</h2>
-              <ul className="mt-1 list-disc pl-5">{official.portfolios.map((item) => <li key={item}>{item}</li>)}</ul>
+              <ul className="mt-1 list-disc pl-5">{portfolios.map((item) => <li key={item}>{item}</li>)}</ul>
             </section>
           ) : null}
           {official.memberships.length > 0 ? (

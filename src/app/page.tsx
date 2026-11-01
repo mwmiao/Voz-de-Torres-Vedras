@@ -1,11 +1,11 @@
-import type { Body, Meeting, Source } from "@prisma/client";
+import type { Body, Meeting, Source, UpdateCategory } from "@prisma/client";
 import Link from "next/link";
 import { DecisionList } from "@/components/DecisionTable";
 import { KindLabel, LastUpdated } from "@/components/labels";
 import { SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { SOURCED_DECISION } from "@/lib/filters";
-import { BODY_LABEL, formatDate, formatEur, formatNumber, formatTime } from "@/lib/format";
+import { BODY_LABEL, formatDate, formatEur, formatNumber, formatTime, UPDATE_CATEGORY_LABEL } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +67,7 @@ function MeetingCard({ body, next, last }: { body: Body; next?: MeetingWithSourc
 export default async function Home() {
   const now = new Date();
   const meetingArgs = { include: { sources: true } };
-  const [nextAm, nextCm, lastAm, lastCm, decisions, decisionCount, contractStats, sourceCount, cash, issues] = await Promise.all([
+  const [nextAm, nextCm, lastAm, lastCm, decisions, decisionCount, contractStats, sourceCount, cash, issues, updates] = await Promise.all([
     db.meeting.findFirst({ ...meetingArgs, where: { body: "ASSEMBLEIA_MUNICIPAL", date: { gte: now } }, orderBy: { date: "asc" } }),
     db.meeting.findFirst({ ...meetingArgs, where: { body: "EXECUTIVO_MUNICIPAL", date: { gte: now } }, orderBy: { date: "asc" } }),
     db.meeting.findFirst({ ...meetingArgs, where: { body: "ASSEMBLEIA_MUNICIPAL", date: { lt: now } }, orderBy: { date: "desc" } }),
@@ -83,7 +83,14 @@ export default async function Home() {
     db.source.count(),
     db.budgetEntry.findFirst({ where: { label: "Total de disponibilidades" }, orderBy: { asOf: "desc" } }),
     db.issue.findMany({ orderBy: { title: "asc" }, take: 4 }),
+    // Por categoria, para que uma série de documentos não esconda contratos ou reuniões.
+    Promise.all(
+      (Object.keys(UPDATE_CATEGORY_LABEL) as UpdateCategory[]).map((category) =>
+        db.updateEvent.findMany({ where: { category }, orderBy: { occurredAt: "desc" }, take: 3 }),
+      ),
+    ),
   ]);
+  const recent = updates.flat().sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
 
   const stats = [
     { label: "Decisões no Registo", value: formatNumber(decisionCount), href: "/reunioes" },
@@ -149,6 +156,33 @@ export default async function Home() {
           <MeetingCard body="ASSEMBLEIA_MUNICIPAL" next={nextAm} last={lastAm} />
           <MeetingCard body="EXECUTIVO_MUNICIPAL" next={nextCm} last={lastCm} />
         </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 pb-10" aria-labelledby="atualizacoes">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 id="atualizacoes" className="font-serif text-2xl font-semibold">Atualizações recentes</h2>
+          <Link href="/estado-das-fontes" className="text-sm underline">Estado das fontes</Link>
+        </div>
+        {recent.length > 0 ? (
+          <ul className="mt-4 divide-y divide-line rounded-lg border border-line bg-surface">
+            {recent.map((update) => (
+              <li key={update.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 p-3 text-sm">
+                <div className="min-w-0 flex-1">
+                  <span className="mr-2 inline-block rounded bg-record-soft px-1.5 py-0.5 text-xs font-semibold text-record">
+                    {UPDATE_CATEGORY_LABEL[update.category]}{update.status === "UPDATED" ? " · alterado" : ""}
+                  </span>
+                  <a href={update.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline [overflow-wrap:anywhere]">
+                    {update.title}
+                    <span className="sr-only"> (abre noutra janela)</span>
+                  </a>
+                </div>
+                <time dateTime={update.occurredAt.toISOString()} className="whitespace-nowrap text-xs text-muted">{formatDate(update.occurredAt)}</time>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted">Ainda não há atualizações registadas.</p>
+        )}
       </section>
 
       <section className="mx-auto max-w-6xl px-4 py-2">

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Bars } from "@/components/Bars";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
-import { SourceChips } from "@/components/Receipts";
+import { Receipt, SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { contractOrder, contractWhere, queryString, type SearchParams } from "@/lib/filters";
 import { formatDateShort, formatEur, formatNumber } from "@/lib/format";
@@ -23,13 +23,20 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
   const page = Math.max(1, Number(params.pagina) || 1);
   const where = contractWhere(params);
 
-  const [contracts, stats, procedures, suppliers, cpvs, allProcedures] = await Promise.all([
-    db.contract.findMany({ where, include: { sources: true }, orderBy: contractOrder(params), skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
+  const [contracts, stats, procedures, suppliers, cpvs, allProcedures, tenders] = await Promise.all([
+    db.contract.findMany({
+      where,
+      include: { sources: true, modifications: { orderBy: { date: "desc" } } },
+      orderBy: contractOrder(params),
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
     db.contract.aggregate({ where, _count: { _all: true }, _sum: { priceEur: true }, _max: { updatedAt: true } }),
     db.contract.groupBy({ by: ["procedureType"], where, _sum: { priceEur: true }, _count: { _all: true }, orderBy: { _sum: { priceEur: "desc" } } }),
     db.contract.groupBy({ by: ["supplierName"], where: { ...where, supplierIsPerson: false }, _sum: { priceEur: true }, _count: { _all: true }, orderBy: { _sum: { priceEur: "desc" } }, take: 6 }),
     db.contract.groupBy({ by: ["cpvLabel"], where: { ...where, cpvLabel: { not: null } }, _sum: { priceEur: true }, orderBy: { _sum: { priceEur: "desc" } }, take: 6 }),
     db.contract.findMany({ distinct: ["procedureType"], select: { procedureType: true }, orderBy: { procedureType: "asc" } }),
+    db.source.findMany({ where: { type: "CONCURSO", official: true }, orderBy: { publishedAt: { sort: "desc", nulls: "last" } }, take: 8 }),
   ]);
 
   const count = stats._count._all;
@@ -106,7 +113,17 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
                 {contracts.map((contract) => (
                   <tr key={contract.id} className="border-t border-line align-top">
                     <td className="whitespace-nowrap px-3 py-2 text-muted">{contract.signedAt ? formatDateShort(contract.signedAt) : "—"}</td>
-                    <td className="px-3 py-2">{contract.title}<span className="block text-xs text-muted">{contract.procedureType}</span><LastUpdated date={contract.updatedAt} /></td>
+                    <td className="px-3 py-2">
+                      {contract.title}
+                      <span className="block text-xs text-muted">{contract.procedureType}</span>
+                      {contract.modifications.map((modification) => (
+                        <span key={modification.id} className="block text-xs text-muted">
+                          Modificação{modification.date ? ` de ${formatDateShort(modification.date)}` : ""}
+                          {modification.newPriceEur ? `: novo valor ${formatEur(modification.newPriceEur)}` : ""}
+                        </span>
+                      ))}
+                      <LastUpdated date={contract.updatedAt} />
+                    </td>
                     <td className="px-3 py-2">{contract.supplierName}</td>
                     <td className="px-3 py-2">{contract.awardingBody}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatEur(contract.priceEur)}</td>
@@ -121,6 +138,14 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
             <span className="text-muted">Página {page} de {pages}</span>
             {page < pages ? <Link href={pageLink(page + 1)} className="underline">Seguinte</Link> : <span />}
           </nav>
+        </section>
+
+        <section aria-labelledby="procedimentos">
+          <h2 id="procedimentos" className="font-serif text-2xl font-semibold">Procedimentos recentes</h2>
+          <p className="text-sm text-muted">Concursos e anúncios publicados. <Link href="/fontes?tipo=CONCURSO" className="underline">Ver todos</Link></p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {tenders.map((tender) => <Receipt key={tender.id} source={tender} />)}
+          </div>
         </section>
 
         <section aria-labelledby="portais">

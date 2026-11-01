@@ -5,7 +5,7 @@ import type { Body, Outcome, SourceType, VoteMode } from "@prisma/client";
 
 export const RETRIEVED_AT = new Date("2026-11-01T10:00:00Z");
 
-const AM_UPLOADS = "http://www.am-tvedras.pt/wp-content/uploads";
+const AM_UPLOADS = "https://www.am-tvedras.pt/wp-content/uploads";
 const CM = "https://www.cm-tvedras.pt";
 
 export type SourceSeed = {
@@ -356,7 +356,6 @@ export const BUDGET: BudgetSeed[] = [
 export const CASH_HISTORY = [
   { date: "2025-12-22", amount: 16519528.59, source: "am-ata-9-2025" },
   { date: "2026-02-23", amount: 11940893.2, source: "am-ata-1-2026" },
-  { date: "2026-06-19", amount: 22128870.49, source: "am-info-2406" },
 ];
 
 export type IssueSeed = {

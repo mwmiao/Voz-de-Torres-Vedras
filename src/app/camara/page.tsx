@@ -38,7 +38,7 @@ export default async function CamaraPage() {
                 <h3 className="font-medium"><Link href={`/camara/${official.slug}`} className="underline">{official.name}</Link></h3>
                 <p className="text-sm text-muted">{official.role} · {official.party}</p>
                 <p className="mt-2 text-sm">
-                  {official.portfolios.length > 0 ? `${official.portfolios.length} pelouros` : "Sem pelouros indicados na fonte"}
+                  {(official.portfolios as string[]).length > 0 ? `${(official.portfolios as string[]).length} pelouros` : "Sem pelouros indicados na fonte"}
                 </p>
                 <div className="mt-2"><SourceChips sources={official.sources} /></div>
                 <LastUpdated date={official.updatedAt} className="mt-2" />

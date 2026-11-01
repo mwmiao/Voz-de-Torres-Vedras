@@ -3,6 +3,7 @@ import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { importBaseContracts } from "../src/lib/import/run";
 import { slugify } from "../src/lib/import/records";
+import { searchKey } from "../src/lib/search";
 import { isOfficialUrl } from "../src/lib/sources";
 import {
   ASSEMBLY_BOARD,
@@ -21,6 +22,7 @@ import {
 } from "./data/real";
 
 const db = new PrismaClient();
+const MANUAL = "transcricao-oficial";
 
 const refs = (keys: string[], ids: Map<string, string>) =>
   keys.map((key) => {
@@ -35,7 +37,13 @@ async function seedSources(): Promise<Map<string, string>> {
   const ids = new Map<string, string>();
   for (const { key, publishedAt, ...source } of SOURCES) {
     if (!isOfficialUrl(source.url, source.type)) throw new Error(`Fonte sem domínio oficial: ${source.url}`);
-    const fields = { ...source, publishedAt: publishedAt ? new Date(publishedAt) : null, retrievedAt: RETRIEVED_AT };
+    const fields = {
+      ...source,
+      publishedAt: publishedAt ? new Date(publishedAt) : null,
+      retrievedAt: RETRIEVED_AT,
+      searchText: searchKey(source.title, source.name),
+      dataSourceId: MANUAL,
+    };
     const row = await db.source.upsert({ where: { url: source.url }, update: fields, create: fields });
     ids.set(key, row.id);
   }
@@ -50,7 +58,7 @@ async function seedOfficials(ids: Map<string, string>) {
     ...PARISH_PRESIDENTS.map((person) => ({ ...person, role: "Presidente de Junta de Freguesia", body: "ASSEMBLEIA_MUNICIPAL" as const, order: 50, portfolios: [], source: "am-composicao" })),
   ];
   for (const { source, ...person } of people) {
-    const fields = { ...person, slug: slugify(person.name), updatedAt: RETRIEVED_AT, sources: connect([source], ids) };
+    const fields = { ...person, slug: slugify(person.name), updatedAt: RETRIEVED_AT, dataSourceId: MANUAL, sources: connect([source], ids) };
     await db.official.upsert({ where: { slug: fields.slug }, update: fields, create: fields });
   }
   for (const committee of COMMITTEES) {
@@ -75,7 +83,7 @@ async function seedOfficials(ids: Map<string, string>) {
 
 async function seedRecord(ids: Map<string, string>) {
   for (const { sources, date, ...meeting } of MEETINGS) {
-    const fields = { ...meeting, date: new Date(date), updatedAt: RETRIEVED_AT, sources: connect(sources, ids) };
+    const fields = { ...meeting, date: new Date(date), updatedAt: RETRIEVED_AT, dataSourceId: MANUAL, sources: connect(sources, ids) };
     await db.meeting.upsert({ where: { slug: meeting.slug }, update: fields, create: fields });
   }
   for (const group of DECISIONS) {
@@ -90,6 +98,8 @@ async function seedRecord(ids: Map<string, string>) {
         outcome,
         voteMode,
         updatedAt: RETRIEVED_AT,
+        searchText: searchKey(title, proposalRef),
+        dataSourceId: MANUAL,
         sources: connect([group.source, ...extra], ids),
       };
       await db.decision.upsert({ where: { slug }, update: fields, create: { ...fields, slug } });
@@ -160,6 +170,7 @@ async function seedPublicData(ids: Map<string, string>) {
         amountEur: amount,
         asOf: asOf ? new Date(`${asOf}T12:00:00Z`) : null,
         updatedAt: RETRIEVED_AT,
+        dataSourceId: MANUAL,
         sources: connect([source], ids),
       },
     });
@@ -169,10 +180,11 @@ async function seedPublicData(ids: Map<string, string>) {
       data: {
         year: Number(date.slice(0, 4)),
         kind: "SITUACAO_FINANCEIRA",
-        label: "Histórico de disponibilidades",
+        label: "Total de disponibilidades",
         amountEur: amount,
         asOf: new Date(`${date}T12:00:00Z`),
         updatedAt: RETRIEVED_AT,
+        dataSourceId: MANUAL,
         sources: connect([source], ids),
       },
     });

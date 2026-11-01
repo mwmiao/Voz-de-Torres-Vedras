@@ -1,4 +1,4 @@
-import type { Body, Outcome, VoteMode } from "@prisma/client";
+import type { Body, Outcome, SourceRunStatus, UpdateCategory, VoteMode } from "@prisma/client";
 
 const TIME_ZONE = "Europe/Lisbon";
 
@@ -35,6 +35,21 @@ export const OUTCOME_LABEL: Record<Outcome, string> = {
   TOMADA_CONHECIMENTO: "Tomada de conhecimento",
   REMETIDO: "Remetido a comissão",
   POR_PUBLICAR: "Deliberação por publicar",
+};
+
+export const UPDATE_CATEGORY_LABEL: Record<UpdateCategory, string> = {
+  CONTRATO: "Contrato",
+  ORCAMENTO: "Orçamento",
+  REUNIAO: "Reunião",
+  DOCUMENTO: "Documento",
+  ELEITO: "Eleitos",
+};
+
+export const RUN_STATUS_LABEL: Record<SourceRunStatus, string> = {
+  OK: "Sem erros",
+  PARCIAL: "Parcial, com registos recusados",
+  ERRO: "Falhou",
+  NUNCA_EXECUTADA: "Ainda não executada",
 };
 
 export function voteSummary(decision: {

@@ -21,6 +21,7 @@
     "import": "tsx scripts/import.ts",
     "fetch:dataset": "tsx scripts/fetch-dataset.ts",
     "update:data": "tsx ingestion/run.ts",
+    "update:alerts": "tsx ingestion/run.ts --alertas",
     "data:bootstrap": "tsx scripts/data.ts bootstrap",
     "data:export": "tsx scripts/data.ts export",
     "data:load": "tsx scripts/data.ts load",

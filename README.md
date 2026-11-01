@@ -2,7 +2,7 @@
 
 **Registos · Dados · Fontes**
 
-Plataforma pública e só de leitura sobre a transparência municipal de Torres Vedras. Reúne orçamento, contratos, reuniões, decisões e eleitos, com ligação às fontes oficiais. Todas as páginas são de acesso livre: não há contas, registo, participação de utilizadores nem envio de email.
+Plataforma pública e só de leitura sobre a transparência municipal de Torres Vedras. Reúne orçamento, contratos, reuniões, decisões, eleitos, resumos simples, métricas, dados de segurança e alertas, com ligação às fontes oficiais. Todas as páginas são de acesso livre: não há contas, registo, participação de utilizadores nem envio de email.
 
 Projeto independente, sem ligação ao Município de Torres Vedras.
 
@@ -21,17 +21,21 @@ Projeto independente, sem ligação ao Município de Torres Vedras.
 
 | Página | Conteúdo |
 | --- | --- |
-| `/` | Resumo, atualizações recentes, próximas reuniões e decisões |
+| `/` | Alertas ativos, últimas atualizações, números principais, reuniões, decisões, contratos e segurança |
 | `/orcamento` | Orçamento, despesa identificada e situação financeira |
 | `/contratos` | Contratos, modificações e procedimentos, com filtros e somas descritivas |
 | `/reunioes` | Decisões pesquisáveis e lista de reuniões, com página por reunião |
+| `/resumos` | Resumos simples de decisões, reuniões, contratos, regulamentos e documentos |
+| `/seguranca` | Crimes registados no concelho, em vista simples e detalhada |
+| `/alertas` | Avisos oficiais ativos e arquivo pesquisável |
+| `/metricas` | Indicadores neutros, com variações e fontes |
 | `/dossies` | Assuntos municipais com contexto, datas e decisões |
 | `/camara` | Diretório de eleitos e comissões |
 | `/fontes` | Todas as fontes, incluindo regulamentos e editais, pesquisáveis |
 | `/estado-das-fontes` | Origens de dados, última atualização, estado e erros |
 | `/metodo`, `/privacidade` | Método e tratamento de dados |
 
-Exportações CSV: `/dados/decisoes.csv`, `/dados/contratos.csv` (ambas seguem os filtros da página), `/dados/reunioes.csv` e `/dados/orcamento.csv`.
+Exportações CSV: `/dados/decisoes.csv`, `/dados/contratos.csv` (ambas seguem os filtros da página), `/dados/reunioes.csv`, `/dados/orcamento.csv`, `/dados/seguranca.csv`, `/dados/alertas.csv`, `/dados/metricas.csv` e `/dados/resumos.csv`.
 
 ## Tecnologia
 
@@ -112,6 +116,7 @@ O módulo [ingestion/](ingestion/) recolhe, valida e grava os dados das fontes o
 | `ingestion/normalizers` | Datas, URL e texto uniformes |
 | `ingestion/validators` | Campos obrigatórios e deteção de mudanças de estrutura |
 | `ingestion/updaters` | Comparação, gravação e histórico de alterações |
+| `ingestion/derive` | Resumos, métricas, taxas e freguesias, calculados no fim de cada execução |
 
 O catálogo de origens, com identificador, URL, frequência, método, validação e política de acesso, está em [src/lib/source-catalog.ts](src/lib/source-catalog.ts).
 
@@ -134,6 +139,13 @@ Antes de recolher páginas, verificou-se se existia API, ficheiro ou índice ofi
 | `cm-regulamentos` | Página pública | Semanal | Regulamentos |
 | `cm-contratacao` | Página pública | Semanal | Procedimentos |
 | `cm-composicao` | Página pública | Semanal | Eleitos e pelouros |
+| `ine-crime` | API do INE | Semanal | Crimes registados, taxa de criminalidade e população do concelho, 2011 em diante |
+| `ipma-avisos` | Dados abertos do IPMA | Hora a hora | Avisos do distrito de Lisboa |
+| `cm-avisos` | Página pública | 6 horas | Avisos do Município |
+| `cm-prociv` | Página pública | 6 horas | Comunicados da Proteção Civil Municipal |
+| `smas-avisos` | Página pública | 3 horas | Interrupções e avisos de água |
+| `alertas-curados` | Ficheiro [prisma/data/alertas-curados.json](prisma/data/alertas-curados.json) | Com os avisos | Avisos oficiais registados à mão |
+| `anepc-avisos` | Desativada | Sem recolha | Ver abaixo |
 | `dre-legislacao` | Desativada | Sem recolha | Ver abaixo |
 
 As origens da Câmara usam páginas porque o site não tem API, feed nem mapa do site.
@@ -142,6 +154,10 @@ As origens da Câmara usam páginas porque o site não tem API, feed nem mapa do
 
 - O `robots.txt` da Câmara exclui `/assets/upload` e `/ficheiros/`, onde estão os PDF. As ligações são guardadas, mas os PDF não são lidos. Por isso, os valores por rubrica do orçamento e as deliberações do Executivo não são extraídos. Podem ser importados depois de transcritos, ou pedidos à Câmara em formato aberto.
 - O Diário da República não tem API pública, e os seus mapas do site não indicam a entidade. Filtrar Torres Vedras obrigaria a abrir cada ato, pelo que a origem está desativada. Os anúncios de procedimentos do Município chegam por `base-anuncios`.
+- Não existem dados oficiais públicos de crimes por freguesia, nem valores mensais ou trimestrais por concelho. Danos e tráfico não são publicados por concelho. A plataforma assinala estas lacunas e não faz estimativas.
+- A execução orçamental por categoria e os projetos ativos não têm fonte estruturada. Aparecem em `/metricas` como indicadores sem dados.
+- A ANEPC recusa a leitura do `robots.txt`, pelo que a sua página não é recolhida. O fogos.pt não é uma entidade oficial e não é usado. As alterações de transportes não têm fonte estruturada e só entram quando publicadas nos avisos da Câmara.
+- Os resumos são gerados por regras, a partir de campos oficiais ([src/lib/summaries.ts](src/lib/summaries.ts)). Não usam inteligência artificial nem leem PDF. Títulos ambíguos ficam com «Resumo não disponível. Consulte o documento oficial.»
 - As deliberações dos editais da Assembleia são guardadas como documentos. A transcrição ponto a ponto continua a ser feita à mão, para não publicar resultados oficiais mal interpretados.
 
 ### Regras de recolha
@@ -240,6 +256,20 @@ A recolha para com a mensagem «Estrutura da fonte alterada», os dados existent
 3. Confirme com `npm run update:data -- --source <id>`.
 
 Enquanto isso, pode desativar a origem em `INGEST_DISABLED_SOURCES`. Não reduza o mínimo em `assertMinimum` para ultrapassar o erro sem perceber a causa.
+
+### Avisos urgentes
+
+Os avisos têm uma frequência própria. No contentor, a variável `ALERT_INTERVAL_MINUTES` (por omissão, 60) define de quanto em quanto são consultados, entre recolhas completas. Manualmente:
+
+```bash
+npm run update:alerts
+```
+
+Para registar um aviso oficial de uma página sem estrutura legível, acrescente-o a `prisma/data/alertas-curados.json`:
+
+```json
+[{ "title": "Título", "type": "MOBILIDADE", "severity": "ATENCAO", "description": "Texto curto.", "area": "Concelho de Torres Vedras", "sourceUrl": "https://www.cm-tvedras.pt/...", "endsAt": "2026-12-01T23:59:00Z" }]
+```
 
 ## Docker
 

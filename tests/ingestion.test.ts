@@ -17,7 +17,7 @@ const CM = "https://www.cm-tvedras.pt/documentos/editaisatas/editaiscm";
 
 describe("catálogo de origens", () => {
   it("cada origem ativa tem recolha, e cada recolha tem origem", () => {
-    const active = SOURCE_CATALOG.filter((source) => source.enabled && source.method !== "TRANSCRICAO").map((source) => source.id).sort();
+    const active = SOURCE_CATALOG.filter((source) => source.enabled && source.id !== "transcricao-oficial").map((source) => source.id).sort();
     expect(Object.keys(COLLECTORS).sort()).toEqual(active);
   });
 

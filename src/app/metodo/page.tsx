@@ -32,6 +32,16 @@ export default function MetodoPage() {
           <p>Encontrou um erro? O documento oficial prevalece sempre sobre esta plataforma.</p>
         </section>
         <section>
+          <h2 className="font-serif text-2xl font-semibold">Resumos simples</h2>
+          <p className="mt-2">Os resumos são gerados por regras, a partir dos campos oficiais de cada registo: órgão, data, resultado, valor e título. Não usamos inteligência artificial nem interpretamos o conteúdo dos PDF.</p>
+          <p>«Resumo simples» só contém factos do registo. «O que significa» é uma explicação geral do tipo de ato, escrita por esta plataforma, e não uma leitura do caso. Quando o título do documento não é claro, apresentamos: «Resumo não disponível. Consulte o documento oficial.»</p>
+        </section>
+        <section>
+          <h2 className="font-serif text-2xl font-semibold">Métricas e segurança</h2>
+          <p className="mt-2">As variações são descritas como «aumentou», «diminuiu», «manteve-se estável» ou «sem dados comparáveis». Variações abaixo de 1% contam como estáveis. Não classificamos resultados nem territórios.</p>
+          <p>Os dados de segurança são agregados, sem qualquer informação sobre vítimas, suspeitos ou processos, e não comparamos freguesias.</p>
+        </section>
+        <section>
           <h2 className="font-serif text-2xl font-semibold">Recolha de dados</h2>
           <p className="mt-2">Usamos apenas informação pública e respeitamos o robots.txt, os termos de utilização e os limites de acesso de cada site. Cada importação guarda a origem, a data de recolha e uma impressão digital do ficheiro.</p>
           <p>Algumas informações ainda estão incompletas. Os mapas completos do orçamento e as deliberações do Executivo constam de PDF que o site da Câmara exclui do acesso automático, pelo que dependem de transcrição.</p>

@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bars } from "@/components/Bars";
+import { Disclosure, EmptyState, MetricCard, Pagination, SectionHead, SummaryBlock } from "@/components/civic";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt, SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { contractOrder, contractWhere, queryString, type SearchParams } from "@/lib/filters";
-import { formatDateShort, formatEur, formatNumber } from "@/lib/format";
+import { formatDate, formatDateShort, formatEur, formatNumber } from "@/lib/format";
+import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Contratos", description: "Contratos públicos do Município e dos SMAS de Torres Vedras, com fornecedores, valores e ligação ao Portal BASE." };
@@ -23,7 +25,7 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
   const page = Math.max(1, Number(params.pagina) || 1);
   const where = contractWhere(params);
 
-  const [contracts, stats, procedures, suppliers, cpvs, allProcedures, tenders] = await Promise.all([
+  const [contracts, stats, procedures, suppliers, cpvs, allProcedures, tenders, years] = await Promise.all([
     db.contract.findMany({
       where,
       include: { sources: true, modifications: { orderBy: { date: "desc" } } },
@@ -37,22 +39,39 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
     db.contract.groupBy({ by: ["cpvLabel"], where: { ...where, cpvLabel: { not: null } }, _sum: { priceEur: true }, orderBy: { _sum: { priceEur: "desc" } }, take: 6 }),
     db.contract.findMany({ distinct: ["procedureType"], select: { procedureType: true }, orderBy: { procedureType: "asc" } }),
     db.source.findMany({ where: { type: "CONCURSO", official: true }, orderBy: { publishedAt: { sort: "desc", nulls: "last" } }, take: 8 }),
+    db.contract.findMany({ select: { signedAt: true } }),
   ]);
 
   const count = stats._count._all;
   const pages = Math.max(1, Math.ceil(count / PAGE_SIZE));
   const filters = { ...params, pagina: undefined };
-  const pageLink = (target: number) => `/contratos?${queryString(filters, { pagina: String(target) })}`;
+  const filtered = Object.values(filters).some(Boolean);
+  const pageLink = (target: number) => `/contratos?${queryString(filters, { pagina: String(target) })}#lista`;
+  const summaries = await summaryMap("contrato", contracts.map((contract) => contract.baseId));
+  const signed = years.map((row) => row.signedAt?.getUTCFullYear()).filter((year): year is number => Boolean(year));
+  const yearOptions = [...new Set(signed)].sort((a, b) => b - a);
 
   return (
     <>
       <PageHead title="Contratos" kicker={<KindLabel kind="REGISTO_OFICIAL" />}>
-        <p>Contratos do Município e dos SMAS registados no Portal BASE em 2026, a partir dos dados abertos do IMPIC. A presença de um contrato ou fornecedor aqui não implica qualquer juízo sobre ele.</p>
+        <p>Contratos do Município e dos SMAS registados no Portal BASE. A presença de um contrato ou fornecedor aqui não implica qualquer juízo sobre ele.</p>
         <LastUpdated date={stats._max.updatedAt} className="mt-1" />
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-        <form method="get" className="grid gap-3 rounded-lg border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_auto]">
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <MetricCard label={params.ano ? `Contratos em ${params.ano}` : "Contratos"} value={formatNumber(count)} />
+          <MetricCard label="Valor contratual somado" value={formatEur(stats._sum.priceEur ?? 0)} />
+        </dl>
+
+        <Disclosure summary="Pesquisar e filtrar" open={filtered}>
+          <form role="search" method="get" action="#lista" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_auto_1fr_1fr_1fr_auto]">
           <label className="text-sm font-medium">Pesquisar<input name="q" defaultValue={params.q ?? ""} className="field mt-1" placeholder="Objeto ou fornecedor" /></label>
+          <label className="text-sm font-medium">Ano
+            <select name="ano" defaultValue={params.ano ?? ""} className="field mt-1">
+              <option value="">Todos</option>
+              {yearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+          </label>
           <label className="text-sm font-medium">Entidade adjudicante
             <select name="entidade" defaultValue={params.entidade ?? ""} className="field mt-1">
               <option value="">Todas</option>
@@ -75,70 +94,57 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
           </label>
           <button type="submit" className="btn self-end">Aplicar</button>
         </form>
+        </Disclosure>
 
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <dl className="flex flex-wrap gap-x-10 gap-y-2">
-            <div><dt className="text-sm text-muted">Contratos</dt><dd className="font-serif text-2xl font-semibold tabular-nums">{formatNumber(count)}</dd></div>
-            <div><dt className="text-sm text-muted">Valor contratual somado</dt><dd className="font-serif text-2xl font-semibold tabular-nums">{formatEur(stats._sum.priceEur ?? 0)}</dd></div>
-          </dl>
-          <CsvLink href={`/dados/contratos.csv?${queryString(filters)}`} />
-        </div>
+        <section aria-labelledby="lista">
+          <SectionHead id="lista" title={`Lista de contratos (${formatNumber(count)})`} action={<CsvLink href={`/dados/contratos.csv?${queryString(filters)}`} />} />
+          {contracts.length > 0 ? (
+            <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-surface">
+              {contracts.map((contract) => {
+                const summary = summaries.get(contract.baseId);
+                return (
+                  <li key={contract.id} className="p-4">
+                    <article>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                        <h3 className="min-w-0 flex-1 font-medium [overflow-wrap:anywhere]">{contract.title}</h3>
+                        <p className="whitespace-nowrap font-semibold tabular-nums">{formatEur(contract.priceEur)}</p>
+                      </div>
+                      <dl className="mt-1 grid gap-x-3 text-sm sm:grid-cols-[auto_1fr]">
+                        <dt className="text-muted">Fornecedor</dt><dd>{contract.supplierName}</dd>
+                        <dt className="text-muted">Adjudicante</dt><dd>{contract.awardingBody}</dd>
+                        <dt className="text-muted">Data</dt><dd>{contract.signedAt ? formatDate(contract.signedAt) : "Não indicada na fonte"}</dd>
+                        <dt className="text-muted">Procedimento</dt><dd>{contract.procedureType}</dd>
+                      </dl>
+                      {contract.modifications.map((modification) => (
+                        <p key={modification.id} className="mt-1 text-sm text-muted">
+                          Modificação{modification.date ? ` de ${formatDateShort(modification.date)}` : ""}
+                          {modification.newPriceEur ? `: novo valor ${formatEur(modification.newPriceEur)}` : ""}
+                        </p>
+                      ))}
+                      <div className="mt-2"><SourceChips sources={contract.sources} /></div>
+                      {summary ? (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-sm underline">Resumo simples</summary>
+                          <div className="mt-2"><SummaryBlock summary={summary} heading={false} /></div>
+                        </details>
+                      ) : null}
+                    </article>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : <div className="mt-3"><EmptyState title="Nenhum contrato corresponde aos filtros."><Link href="/contratos" className="underline">Limpar filtros</Link></EmptyState></div>}
+          <Pagination page={page} pages={pages} link={pageLink} />
+        </section>
 
-        <section aria-labelledby="padroes">
-          <h2 id="padroes" className="font-serif text-2xl font-semibold">Padrões a consultar</h2>
+        <Disclosure summary="Contratos por procedimento, categoria e fornecedor">
           <p className="text-sm text-muted">Somas descritivas para orientar a consulta. Não indicam qualquer irregularidade.</p>
           <div className="mt-3 grid gap-4 lg:grid-cols-3">
             <Bars title="Por tipo de procedimento" rows={procedures.map((row) => ({ label: row.procedureType, value: Number(row._sum.priceEur ?? 0), detail: `${row._count._all} contratos` }))} />
             <Bars title="Por categoria CPV" rows={cpvs.map((row) => ({ label: row.cpvLabel ?? "Sem categoria", value: Number(row._sum.priceEur ?? 0) }))} />
             <Bars title="Por fornecedor" rows={suppliers.map((row) => ({ label: row.supplierName, value: Number(row._sum.priceEur ?? 0), detail: `${row._count._all} contratos` }))} />
           </div>
-        </section>
-
-        <section aria-labelledby="lista">
-          <h2 id="lista" className="font-serif text-2xl font-semibold">Lista de contratos</h2>
-          <div className="relative mt-3 overflow-x-auto rounded-lg border border-line bg-surface">
-            <table className="w-full min-w-[46rem] text-left text-sm">
-              <caption className="sr-only">Contratos públicos</caption>
-              <thead className="bg-paper text-xs text-muted">
-                <tr>
-                  <th scope="col" className="px-3 py-2">Data</th>
-                  <th scope="col" className="px-3 py-2">Objeto</th>
-                  <th scope="col" className="px-3 py-2">Fornecedor</th>
-                  <th scope="col" className="px-3 py-2">Adjudicante</th>
-                  <th scope="col" className="px-3 py-2 text-right">Valor</th>
-                  <th scope="col" className="px-3 py-2">Fonte</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contracts.map((contract) => (
-                  <tr key={contract.id} className="border-t border-line align-top">
-                    <td className="whitespace-nowrap px-3 py-2 text-muted">{contract.signedAt ? formatDateShort(contract.signedAt) : "—"}</td>
-                    <td className="px-3 py-2">
-                      {contract.title}
-                      <span className="block text-xs text-muted">{contract.procedureType}</span>
-                      {contract.modifications.map((modification) => (
-                        <span key={modification.id} className="block text-xs text-muted">
-                          Modificação{modification.date ? ` de ${formatDateShort(modification.date)}` : ""}
-                          {modification.newPriceEur ? `: novo valor ${formatEur(modification.newPriceEur)}` : ""}
-                        </span>
-                      ))}
-                      <LastUpdated date={contract.updatedAt} />
-                    </td>
-                    <td className="px-3 py-2">{contract.supplierName}</td>
-                    <td className="px-3 py-2">{contract.awardingBody}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatEur(contract.priceEur)}</td>
-                    <td className="px-3 py-2"><SourceChips sources={contract.sources} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <nav aria-label="Páginas" className="mt-3 flex items-center justify-between text-sm">
-            {page > 1 ? <Link href={pageLink(page - 1)} className="underline">Anterior</Link> : <span />}
-            <span className="text-muted">Página {page} de {pages}</span>
-            {page < pages ? <Link href={pageLink(page + 1)} className="underline">Seguinte</Link> : <span />}
-          </nav>
-        </section>
+        </Disclosure>
 
         <section aria-labelledby="procedimentos">
           <h2 id="procedimentos" className="font-serif text-2xl font-semibold">Procedimentos recentes</h2>

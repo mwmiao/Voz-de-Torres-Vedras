@@ -14,10 +14,17 @@
   --color-record-soft: #e3edf3;
   --color-editorial: #3f5a4c;
   --color-editorial-soft: #e6eee8;
+
+  --color-attention: #5c4400;
+  --color-attention-soft: #fdf3d7;
+  --color-important: #7a3100;
+  --color-important-soft: #fde7d4;
+  --color-critical: #8a1414;
+  --color-critical-soft: #fbe0e0;
 }
 
 html {
-  scroll-padding-top: 5rem;
+  scroll-padding-top: 5.5rem;
 }
 
 body {
@@ -83,8 +90,109 @@ a {
   background: var(--color-paper);
 }
 
+.nav-link {
+  display: block;
+  min-height: 44px;
+  border-radius: 6px;
+  padding: 0.65rem 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.nav-link:hover {
+  background: color-mix(in srgb, var(--color-line) 40%, transparent);
+  color: var(--color-ink);
+}
+
+.nav-link[aria-current="page"] {
+  color: var(--color-ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+.task-link {
+  display: block;
+  height: 100%;
+  min-height: 44px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 0.85rem 1rem;
+  text-decoration: none;
+}
+
+.task-link:hover {
+  border-color: var(--color-record);
+}
+
+.disclosure {
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 0.75rem 1rem;
+}
+
+.disclosure > summary {
+  min-height: 28px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.severity-info {
+  border-color: var(--color-record);
+  background: var(--color-record-soft);
+  color: var(--color-record);
+}
+
+.severity-attention {
+  border-color: var(--color-attention);
+  background: var(--color-attention-soft);
+  color: var(--color-attention);
+}
+
+.severity-important {
+  border-color: var(--color-important);
+  background: var(--color-important-soft);
+  color: var(--color-important);
+}
+
+.severity-critical {
+  border-color: var(--color-critical);
+  background: var(--color-critical-soft);
+  color: var(--color-critical);
+}
+
+.severity-info-edge {
+  border-left-color: var(--color-record);
+}
+
+.severity-attention-edge {
+  border-left-color: var(--color-attention);
+}
+
+.severity-important-edge {
+  border-left-color: var(--color-important);
+}
+
+.severity-critical-edge {
+  border-left-color: var(--color-critical);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

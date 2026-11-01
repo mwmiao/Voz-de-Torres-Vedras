@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import * as cheerio from "cheerio";
 import { extractText, getDocumentProxy } from "unpdf";
@@ -19,8 +21,21 @@ import {
   parseGestao,
   parseRegulamentos,
 } from "../parsers/camara";
-import { StructureError, type Collected, type IngestRecord } from "../types";
+import { StructureError, type AlertRecord, type Collected, type IngestRecord } from "../types";
 import { assertContains, assertMinimum } from "../validators";
+import {
+  DEFAULT_ACTIVE_DAYS,
+  IPMA_API,
+  parseCmCivilProtection,
+  parseCmNoticeDetail,
+  parseCmNoticeList,
+  parseIpmaWarnings,
+  parseSmasDetail,
+  parseSmasList,
+  SMAS,
+  type IpmaWarning,
+} from "../parsers/alertas";
+import { CRIME_CATEGORIES, INE_SERIES, ineRows, ineUrl, parseCrimeYear, parsePopulation, type IneResponse } from "../parsers/ine";
 
 export type CollectorInput = { http: PoliteHttp; db: PrismaClient; revision: string | null; now: Date };
 export type Collector = (input: CollectorInput) => Promise<Collected>;
@@ -132,21 +147,39 @@ async function collectBaseYearly<T>(
   return { records: await transform(rows), revision };
 }
 
-const collectContratos: Collector = (input) =>
-  collectBaseYearly<BaseRecord>(
-    input,
-    "contratos",
-    (year) => new RegExp(`^contratos${year}\\.zip$`, "i"),
-    (rows) => {
-      const records = new Map<string, IngestRecord>();
-      for (const row of rows) {
-        const contract = normalizeBaseRecord(row);
-        if (contract) records.set(contract.baseId, { kind: "contract", ...contract });
-      }
-      return assertMinimum([...records.values()], 1, "contratos municipais");
-    },
-    MUNICIPAL_NIFS,
+/** Anos anteriores permitem comparar contratos de um ano para o outro. */
+const FIRST_CONTRACT_YEAR = 2023;
+
+const collectContratos: Collector = async (input) => {
+  const revisions = parseRevisions(input.revision);
+  const records = new Map<string, IngestRecord>();
+  const { data } = await input.http.json<{ resources: { title: string; url: string; last_modified: string }[] }>(
+    `https://dados.gov.pt/api/1/datasets/${slugBase("contratos")(input.now.getUTCFullYear())}/`,
   );
+  for (let year = FIRST_CONTRACT_YEAR; year <= input.now.getUTCFullYear(); year += 1) {
+    const resource = data.resources.find((item) => new RegExp(`^contratos${year}\\.zip$`, "i").test(item.title));
+    if (!resource) continue;
+    if (revisions[year] === resource.last_modified) continue;
+    // Um ano de cada vez, para libertar a memória do ficheiro anterior.
+    const rows = [...filterJsonArray<BaseRecord>(unzipFirst(await input.http.bytes(resource.url, { api: true })), MUNICIPAL_NIFS)];
+    for (const row of rows) {
+      const contract = normalizeBaseRecord(row);
+      if (contract) records.set(contract.baseId, { kind: "contract", ...contract });
+    }
+    revisions[year] = resource.last_modified;
+  }
+  if (records.size === 0) return { unchanged: true };
+  return { records: [...records.values()], revision: JSON.stringify(revisions) };
+};
+
+function parseRevisions(revision: string | null): Record<number, string> {
+  try {
+    const parsed = JSON.parse(revision ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 const collectAnuncios: Collector = (input) =>
   collectBaseYearly<RawAnnouncement>(
@@ -213,7 +246,105 @@ const collectCmComposicao: Collector = async (input) => {
   return { records: officials, complete: true };
 };
 
+async function ineData(input: CollectorInput, code: string, year: number, area: string, extra = "") {
+  const { data } = await input.http.json<IneResponse[]>(ineUrl(code, year, area, extra));
+  return ineRows(data, year);
+}
+
+const collectIneCrime: Collector = async (input) => {
+  const records: IngestRecord[] = [];
+  const lastYear = input.now.getUTCFullYear() - 1;
+  for (let year = 2011; year <= lastYear; year += 1) {
+    const counts = INE_SERIES.counts.find((item) => year >= item.from && year <= item.to)!;
+    const rates = INE_SERIES.rates.find((item) => year >= item.from && year <= item.to)!;
+    const population = INE_SERIES.population.find((item) => year >= item.from && year <= item.to)!;
+    try {
+      const count = await ineData(input, counts.code, year, counts.area);
+      const rate = await ineData(input, rates.code, year, rates.area);
+      records.push(...parseCrimeYear({ year, counts: count.rows, rates: rate.rows, countIndicator: counts.code, publishedAt: count.updated }));
+    } catch (error) {
+      // O ano mais recente pode ainda não estar publicado.
+      if (year < lastYear) throw error;
+      continue;
+    }
+    const residents = await ineData(input, population.code, year, population.area, "&Dim3=T&Dim4=T").catch(() => null);
+    const estimate = residents && parsePopulation(residents.rows, year, population.code, residents.updated);
+    if (estimate) records.push(estimate);
+  }
+  const totals = records.filter((record) => record.kind === "crime" && record.categoryCode === "T");
+  assertMinimum(totals, 10, `anos de dados de ${CRIME_CATEGORIES[0].name.toLowerCase()}`);
+  return { records };
+};
+
+const collectIpma: Collector = async ({ http }) => {
+  const { data } = await http.json<IpmaWarning[]>(IPMA_API);
+  assertMinimum(data, 1, "avisos do IPMA");
+  return { records: parseIpmaWarnings(data), complete: true };
+};
+
+const collectCmAvisos: Collector = async (input) => {
+  const url = `${CM}/artigos/avisos/`;
+  const { body } = await input.http.text(url);
+  const list = assertMinimum(parseCmNoticeList(body), 3, "avisos da Câmara");
+  const records: IngestRecord[] = [];
+  for (const item of list) {
+    // Volta a abrir-se cada aviso da lista, porque a Câmara atualiza alguns, como os de trânsito.
+    const { body: detail } = await input.http.text(item.url);
+    records.push(parseCmNoticeDetail(detail, item, input.now));
+  }
+  return { records };
+};
+
+const collectCmProciv: Collector = async (input) => {
+  const url = `${CM}/outros/prociv/avisos/`;
+  const { body } = await input.http.text(url);
+  const year = input.now.getUTCFullYear() - 1;
+  const records = assertMinimum(parseCmCivilProtection(body, url), 3, "comunicados da Proteção Civil");
+  return { records: records.filter((record) => (record.publishedAt?.getUTCFullYear() ?? 0) >= year) };
+};
+
+const collectSmas: Collector = async (input) => {
+  const records: IngestRecord[] = [];
+  for (const section of ["interrupcoes-programadas", "avisos-de-falha-de-abastecimento", "outros-avisos"]) {
+    const { body } = await input.http.text(`${SMAS}/cliente/avisos-e-interrupcoes/${section}`);
+    assertContains(body, /An[úu]ncios/, "avisos dos SMAS");
+    for (const url of parseSmasList(body)) {
+      const { body: detail } = await input.http.text(url);
+      const record = parseSmasDetail(detail, url, input.now);
+      if (!record) throw new StructureError(`aviso dos SMAS sem o formato esperado: ${url}`);
+      records.push(record);
+    }
+  }
+  return { records };
+};
+
+const collectCurated: Collector = async ({ now }) => {
+  const file = path.join(process.cwd(), "prisma", "data", "alertas-curados.json");
+  if (!existsSync(file)) return { records: [] };
+  const items = JSON.parse(readFileSync(file, "utf8")) as (Omit<AlertRecord, "kind" | "key" | "startsAt" | "endsAt" | "publishedAt" | "hasTime" | "hasOfficialEnd" | "areaType"> & { startsAt?: string; endsAt?: string; publishedAt?: string })[];
+  const date = (value?: string) => (value ? new Date(value) : null);
+  return {
+    records: items.map((item) => ({
+      ...item,
+      kind: "alert" as const,
+      key: `curado|${item.sourceUrl}`,
+      startsAt: date(item.startsAt),
+      endsAt: date(item.endsAt) ?? new Date(now.getTime() + DEFAULT_ACTIVE_DAYS * 86_400_000),
+      hasOfficialEnd: Boolean(item.endsAt),
+      hasTime: false,
+      areaType: item.area.startsWith("Concelho") ? ("CONCELHO" as const) : ("FREGUESIA" as const),
+      publishedAt: date(item.publishedAt),
+    })),
+  };
+};
+
 export const COLLECTORS: Record<string, Collector> = {
+  "ine-crime": collectIneCrime,
+  "ipma-avisos": collectIpma,
+  "cm-avisos": collectCmAvisos,
+  "cm-prociv": collectCmProciv,
+  "smas-avisos": collectSmas,
+  "alertas-curados": collectCurated,
   "am-documentos": collectAmDocumentos,
   "am-editais": collectAmEditais,
   "am-situacao-financeira": collectFinance,

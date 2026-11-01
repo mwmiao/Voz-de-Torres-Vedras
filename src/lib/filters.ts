@@ -31,7 +31,9 @@ export function decisionOrder(params: SearchParams): Prisma.DecisionOrderByWithR
 
 export function contractWhere(params: SearchParams): Prisma.ContractWhereInput {
   const q = searchKey(params.q).trim();
+  const year = /^\d{4}$/.test(params.ano ?? "") ? Number(params.ano) : undefined;
   return {
+    signedAt: year ? { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } : undefined,
     awardingNif: params.entidade || undefined,
     procedureType: params.procedimento || undefined,
     searchText: q ? { contains: q } : undefined,

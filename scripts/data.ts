@@ -4,7 +4,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
-import { exportSnapshot, loadSnapshot } from "../ingestion/snapshot";
+import { deriveAll } from "../ingestion/derive";
+import { exportSnapshot, loadSnapshot, normalizeDates } from "../ingestion/snapshot";
 
 const SNAPSHOT = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "data", "snapshot");
 
@@ -16,16 +17,21 @@ async function isEmpty(db: PrismaClient) {
 async function bootstrap(db: PrismaClient) {
   if (!(await isEmpty(db))) {
     console.log("Base de dados já preenchida.");
+    const fixed = await normalizeDates(db);
+    if (fixed > 0) console.log(`Datas corrigidas: ${fixed}.`);
+    await deriveAll(db);
     return;
   }
   // Uma cópia que existe e não carrega é um erro: o seed esconderia a perda dos dados recolhidos.
   if (existsSync(SNAPSHOT)) {
     console.log(`Cópia carregada: ${await loadSnapshot(db, SNAPSHOT)} registos.`);
+    await deriveAll(db);
     return;
   }
   console.log("Sem cópia de dados. A correr o seed.");
   const result = spawnSync("npx prisma db seed", { stdio: "inherit", shell: true });
   if (result.status !== 0) throw new Error("O seed falhou.");
+  await deriveAll(db);
 }
 
 async function backup(db: PrismaClient) {
@@ -53,6 +59,10 @@ async function validate(db: PrismaClient) {
   const integrity = await db.$queryRawUnsafe<{ integrity_check: string }[]>("PRAGMA integrity_check");
   if (integrity[0]?.integrity_check !== "ok") problems.push("ficheiro SQLite com erros de integridade");
   if ((await db.contract.count()) === 0) problems.push("sem contratos");
+  const unsourcedAlerts = await db.alert.count({ where: { sourceUrl: "" } });
+  if (unsourcedAlerts > 0) problems.push(`${unsourcedAlerts} alertas sem ligação à fonte`);
+  const unsourcedSummaries = await db.summary.count({ where: { sourceUrl: "" } });
+  if (unsourcedSummaries > 0) problems.push(`${unsourcedSummaries} resumos sem ligação à fonte`);
   if ((await db.official.count({ where: { active: true } })) < 7) problems.push("menos de 7 eleitos ativos");
 
   if (problems.length > 0) {

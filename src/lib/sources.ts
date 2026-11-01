@@ -13,6 +13,9 @@ const OFFICIAL_HOSTS = [
   "transparencia.gov.pt",
   "portalautarquico.dgal.gov.pt",
   "tribunalconstitucional.pt",
+  "ine.pt",
+  "ipma.pt",
+  "smastv.pt",
 ];
 
 /** Vídeo em plataforma externa só conta quando é a transmissão publicada pelo próprio órgão. */

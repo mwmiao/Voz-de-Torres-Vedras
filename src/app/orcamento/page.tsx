@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Bars } from "@/components/Bars";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
+import { Disclosure, ScrollTable } from "@/components/civic";
 import { OfficialBadge, SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { formatDate, formatEur } from "@/lib/format";
@@ -40,7 +41,7 @@ export default async function OrcamentoPage() {
   return (
     <>
       <PageHead title="Orçamento" kicker={<KindLabel kind="REGISTO_OFICIAL" />}>
-        <p>Valores comunicados à Assembleia Municipal e registados nas suas atas. Valores aproximados aparecem assinalados com «cerca de».</p>
+        <p>Quanto o Município prevê gastar e a sua situação financeira, a partir de documentos da Assembleia Municipal. Valores aproximados aparecem com «cerca de».</p>
         <LastUpdated date={updated} className="mt-1" />
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-10 px-4 py-8">
@@ -70,7 +71,9 @@ export default async function OrcamentoPage() {
             <Bars title="Despesa" rows={spending.map((entry) => ({ label: entry.label, value: Number(entry.amountEur), detail: entry.approximate ? "Valor aproximado" : undefined }))} />
             <Bars title="Receita" rows={revenue.map((entry) => ({ label: entry.label, value: Number(entry.amountEur) }))} />
           </div>
-          <div className="relative mt-4 overflow-x-auto rounded-lg border border-line bg-surface">
+          <div className="mt-4">
+          <Disclosure summary="Ver cada valor e a sua fonte">
+          <ScrollTable label="Valores orçamentais e respetivas fontes">
             <table className="w-full min-w-[40rem] text-left text-sm">
               <caption className="sr-only">Valores orçamentais e respetivas fontes</caption>
               <thead className="bg-paper text-xs text-muted">
@@ -92,6 +95,8 @@ export default async function OrcamentoPage() {
                 ))}
               </tbody>
             </table>
+          </ScrollTable>
+          </Disclosure>
           </div>
         </section>
 

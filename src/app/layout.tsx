@@ -11,7 +11,7 @@ const serif = Source_Serif_4({ subsets: ["latin"], variable: "--font-serif-body"
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL ?? "http://localhost:1400"),
   title: { default: "Voz de Torres Vedras", template: "%s · Voz de Torres Vedras" },
-  description: "Dados públicos de Torres Vedras, com fontes oficiais: orçamento, contratos, reuniões, decisões e eleitos.",
+  description: "Dados públicos de Torres Vedras, com fontes oficiais: orçamento, contratos, reuniões, decisões, segurança e alertas.",
   openGraph: { type: "website", locale: "pt_PT", siteName: "Voz de Torres Vedras" },
 };
 

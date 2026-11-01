@@ -11,7 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     db.meeting.findMany({ select: { slug: true, updatedAt: true } }),
   ]);
   return [
-    ...["", "/orcamento", "/contratos", "/reunioes", "/dossies", "/camara", "/fontes", "/estado-das-fontes", "/metodo", "/privacidade"].map((path) => ({ url: `${base}${path}` })),
+    ...["", "/orcamento", "/contratos", "/reunioes", "/resumos", "/seguranca", "/alertas", "/metricas", "/dossies", "/camara", "/fontes", "/estado-das-fontes", "/metodo", "/privacidade"].map((path) => ({ url: `${base}${path}` })),
     ...issues.map((issue) => ({ url: `${base}/dossies/${issue.slug}`, lastModified: issue.updatedAt })),
     ...meetings.map((meeting) => ({ url: `${base}/reunioes/${meeting.slug}`, lastModified: meeting.updatedAt })),
     ...officials.map((official) => ({ url: `${base}/camara/${official.slug}`, lastModified: official.updatedAt })),

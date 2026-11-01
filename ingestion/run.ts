@@ -3,6 +3,7 @@
 //   npm run update:data -- --source cm-editais --source base-anuncios
 //   npm run update:data -- --force     ignora a frequência de cada origem
 //   npm run update:data -- --strict    termina com erro se alguma origem falhar
+//   npm run update:alerts              só as origens de avisos urgentes
 
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
@@ -11,7 +12,9 @@ import { SOURCE_CATALOG, type SourceDefinition } from "@/lib/source-catalog";
 import { PoliteHttp } from "./fetchers/http";
 import { COLLECTORS } from "./sources";
 import type { IngestRecord } from "./types";
+import { deriveAll } from "./derive";
 import { applyRecord, retireMissingOfficials, type ApplyContext } from "./updaters/apply";
+import { closeMissingAlerts } from "./updaters/civic";
 import { validateRecord } from "./validators";
 
 type Summary = { id: string; status: SourceRunStatus | "IGNORADA"; created: number; updated: number; unchanged: number; failed: number; message?: string };
@@ -19,7 +22,7 @@ type Summary = { id: string; status: SourceRunStatus | "IGNORADA"; created: numb
 function readArgs(argv: string[]) {
   const only: string[] = [];
   for (let i = 0; i < argv.length; i += 1) if (argv[i] === "--source" && argv[i + 1]) only.push(argv[i + 1]);
-  return { only, force: argv.includes("--force"), strict: argv.includes("--strict") };
+  return { only, force: argv.includes("--force"), strict: argv.includes("--strict"), alertsOnly: argv.includes("--alertas") };
 }
 
 async function applyAll(context: ApplyContext, records: IngestRecord[], summary: Summary): Promise<string[]> {
@@ -70,6 +73,11 @@ async function runSource(db: PrismaClient, http: PoliteHttp, source: SourceDefin
       summary.updated += await retireMissingOfficials(context, names, source.baseUrl);
     }
 
+    if (!collected.unchanged && collected.complete && source.id === "ipma-avisos") {
+      const keys = collected.records.flatMap((record) => (record.kind === "alert" ? [record.key] : []));
+      await closeMissingAlerts(context, keys);
+    }
+
     await db.source.updateMany({ where: { dataSourceId: source.id }, data: { retrievedAt: now } });
     await db.contract.updateMany({ where: { dataSourceId: source.id }, data: { updatedAt: now } });
 
@@ -99,6 +107,21 @@ async function runSource(db: PrismaClient, http: PoliteHttp, source: SourceDefin
     });
   }
 
+  await db.dataUpdateLog.create({
+    data: {
+      status: summary.status,
+      newCount: summary.created,
+      updatedCount: summary.updated,
+      unchangedCount: summary.unchanged,
+      failedCount: summary.failed,
+      message: summary.message,
+      sourceId: source.id,
+      sourceUrl: source.baseUrl,
+      retrievalDate: now,
+      dataPeriod: now.toISOString().slice(0, 10),
+    },
+  });
+
   await db.importRun.update({
     where: { id: run.id },
     data: {
@@ -116,13 +139,18 @@ async function runSource(db: PrismaClient, http: PoliteHttp, source: SourceDefin
 }
 
 async function main() {
-  const { only, force, strict } = readArgs(process.argv.slice(2));
+  const { only, force, strict, alertsOnly } = readArgs(process.argv.slice(2));
   const disabled = (process.env.INGEST_DISABLED_SOURCES ?? "").split(",").map((item) => item.trim());
   const unknown = only.filter((id) => !COLLECTORS[id]);
   if (unknown.length > 0) throw new Error(`Origem desconhecida: ${unknown.join(", ")}`);
 
   const selected = SOURCE_CATALOG.filter(
-    (source) => source.enabled && COLLECTORS[source.id] && !disabled.includes(source.id) && (only.length === 0 || only.includes(source.id)),
+    (source) =>
+      source.enabled &&
+      COLLECTORS[source.id] &&
+      !disabled.includes(source.id) &&
+      (only.length === 0 || only.includes(source.id)) &&
+      (!alertsOnly || source.group === "alertas"),
   );
   const db = new PrismaClient();
   const http = new PoliteHttp();
@@ -135,6 +163,8 @@ async function main() {
       console.log(`${summary.status}${summary.message ? ` (${summary.message.slice(0, 160)})` : ""}`);
       http.saveCache();
     }
+    const derived = await deriveAll(db);
+    console.log(`Derivados: ${derived.summaries} resumos e ${derived.metrics} métricas atualizados.`);
   } finally {
     await db.$disconnect();
   }
@@ -145,7 +175,10 @@ async function main() {
 
   // Datas de verificação mudam sempre: só registos novos ou alterados justificam publicar dados.
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, `alterado=${total("created") + total("updated") > 0}\n`);
+    // Os avisos passam depressa: sozinhos, não justificam um pull request.
+    const alerts = new Set(SOURCE_CATALOG.filter((source) => source.group === "alertas").map((source) => source.id));
+    const changed = summaries.some((item) => !alerts.has(item.id) && item.created + item.updated > 0);
+    appendFileSync(process.env.GITHUB_OUTPUT, `alterado=${changed}\n`);
   }
 
   const anyError = summaries.some((item) => item.status === "ERRO" || item.status === "PARCIAL");

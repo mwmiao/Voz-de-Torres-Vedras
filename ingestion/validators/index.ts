@@ -1,3 +1,4 @@
+import { isOfficialUrl } from "@/lib/sources";
 import { StructureError, type IngestRecord } from "../types";
 
 const isHttp = (url: string) => /^https?:\/\//.test(url);
@@ -40,6 +41,23 @@ export function validateRecord(record: IngestRecord): string[] {
       need(record.label, "label");
       need(Number.isFinite(record.amountEur) && record.amountEur >= 0, "amountEur");
       need(isHttp(record.sourceUrl), "sourceUrl");
+      break;
+    case "alert":
+      need(record.key, "key");
+      need(record.title.length >= 5, "title");
+      need(record.description, "description");
+      // Um aviso sem fonte oficial não é publicado.
+      need(isOfficialUrl(record.sourceUrl), "sourceUrl");
+      break;
+    case "crime":
+      need(record.categoryCode, "categoryCode");
+      need(Number.isInteger(record.year), "year");
+      need(record.confidential || Number.isInteger(record.count), "count");
+      need(isOfficialUrl(record.sourceUrl), "sourceUrl");
+      break;
+    case "population":
+      need(Number.isInteger(record.population) && record.population > 0, "population");
+      need(isOfficialUrl(record.sourceUrl), "sourceUrl");
       break;
   }
   return problems;

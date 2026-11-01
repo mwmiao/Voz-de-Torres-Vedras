@@ -1,6 +1,7 @@
 import type { SourceType } from "@prisma/client";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { EmptyState, Pagination } from "@/components/civic";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
@@ -37,7 +38,7 @@ export default async function FontesPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <PageHead title="Fontes" kicker={<KindLabel kind="REGISTO_OFICIAL" />}>
-        <p>Cada fonte indica a entidade, o tipo de documento e as datas de publicação e de consulta. Em caso de divergência, prevalece sempre o documento oficial.</p>
+        <p>Todos os documentos oficiais usados nesta plataforma. Em caso de divergência, prevalece sempre o documento oficial.</p>
         <LastUpdated date={updated._max.retrievedAt} className="mt-1" />
       </PageHead>
       <div className="mx-auto max-w-6xl px-4 py-8">
@@ -47,20 +48,19 @@ export default async function FontesPage({ searchParams }: { searchParams: Promi
           <button type="submit" className="btn">Pesquisar</button>
         </form>
         <nav aria-label="Filtrar por tipo" className="flex flex-wrap gap-2 text-sm">
-          <Link href="/fontes" className={`rounded border px-2.5 py-1 ${!type ? "border-record bg-record text-white" : "border-line bg-surface"}`}>Todas</Link>
+          <Link href="/fontes" aria-current={!type ? "page" : undefined} className={`rounded border px-2.5 py-1.5 ${!type ? "border-record bg-record text-white" : "border-line bg-surface"}`}>Todas</Link>
           {groups.map((group) => (
-            <Link key={group.type} href={`/fontes?tipo=${group.type}`} className={`rounded border px-2.5 py-1 ${type === group.type ? "border-record bg-record text-white" : "border-line bg-surface"}`}>
+            <Link key={group.type} href={`/fontes?tipo=${group.type}`} aria-current={type === group.type ? "page" : undefined} className={`rounded border px-2.5 py-1.5 ${type === group.type ? "border-record bg-record text-white" : "border-line bg-surface"}`}>
               {SOURCE_TYPE_LABEL[group.type]} ({formatNumber(group._count._all)})
             </Link>
           ))}
         </nav>
+        <h2 className="sr-only">Resultados</h2>
         <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {sources.map((source) => <Receipt key={source.id} source={source} />)}
         </div>
-        <nav aria-label="Páginas" className="mt-5 flex justify-between text-sm">
-          {page > 1 ? <Link className="underline" href={pageLink(page - 1)}>Anterior</Link> : <span />}
-          {page * PAGE_SIZE < total ? <Link className="underline" href={pageLink(page + 1)}>Seguinte</Link> : <span />}
-        </nav>
+        {sources.length === 0 ? <EmptyState title="Nenhuma fonte corresponde à pesquisa."><Link href="/fontes" className="underline">Limpar pesquisa</Link></EmptyState> : null}
+        <Pagination page={page} pages={Math.max(1, Math.ceil(total / PAGE_SIZE))} link={pageLink} />
       </div>
     </>
   );

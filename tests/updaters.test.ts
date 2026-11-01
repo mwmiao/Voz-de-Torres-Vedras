@@ -152,6 +152,8 @@ describe("cópia de dados", () => {
     const restored = await copy.contract.findFirstOrThrow({ include: { sources: true } });
     expect(Number(restored.priceEur)).toBe(2000.25);
     expect(restored.signedAt?.toISOString()).toBe(contract.signedAt?.toISOString());
+    // As comparações em SQL dependem de a data não ficar guardada como texto.
+    expect(await copy.contract.count({ where: { signedAt: { gte: new Date("2026-01-01T00:00:00Z") } } })).toBe(1);
     expect(restored.sources).toHaveLength(1);
     expect(await copy.fieldChange.count()).toBe(1);
     expect((await copy.official.findFirstOrThrow()).portfolios).toEqual(["Educação"]);

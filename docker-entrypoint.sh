@@ -12,13 +12,21 @@ npx prisma migrate deploy
 npx tsx scripts/data.ts bootstrap
 
 # Atualização automática dentro do contentor. 0 desliga.
+# Um só ciclo, porque o SQLite aceita um escritor de cada vez: os avisos correm entre recolhas completas.
 hours="${UPDATE_INTERVAL_HOURS:-0}"
+alert_minutes="${ALERT_INTERVAL_MINUTES:-60}"
 if [ "$hours" -gt 0 ]; then
   (
     sleep 60
+    next_full=0
     while true; do
-      npx tsx ingestion/run.ts || echo "A atualização falhou; volta a tentar no próximo ciclo."
-      sleep $((hours * 3600))
+      if [ "$(date +%s)" -ge "$next_full" ]; then
+        next_full=$(($(date +%s) + hours * 3600))
+        npx tsx ingestion/run.ts || echo "A atualização falhou; volta a tentar no próximo ciclo."
+      elif [ "$alert_minutes" -gt 0 ]; then
+        npx tsx ingestion/run.ts --alertas || echo "A atualização de avisos falhou; volta a tentar no próximo ciclo."
+      fi
+      sleep $(((alert_minutes > 0 ? alert_minutes : 60) * 60))
     done
   ) &
 fi

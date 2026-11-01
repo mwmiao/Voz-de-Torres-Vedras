@@ -11,6 +11,7 @@ export function Footer() {
           </p>
         </div>
         <nav aria-label="Rodapé" className="flex flex-col gap-1">
+          <Link href="/resumos" className="underline">Resumos simples</Link>
           <Link href="/dossies" className="underline">Dossiês</Link>
           <Link href="/estado-das-fontes" className="underline">Estado das fontes</Link>
           <Link href="/metodo" className="underline">Método e neutralidade</Link>

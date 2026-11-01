@@ -32,6 +32,23 @@ export async function exportSnapshot(db: PrismaClient, directory: string): Promi
   return total;
 }
 
+/**
+ * O Prisma guarda datas como milissegundos, mas a exportação escreve-as como texto ISO. Em texto,
+ * as datas leem-se bem, porém todas as comparações em SQL falham: «a partir de hoje» não encontra nada.
+ */
+export async function normalizeDates(db: PrismaClient): Promise<number> {
+  let fixed = 0;
+  for (const table of await tables(db)) {
+    const columns = await db.$queryRawUnsafe<{ name: string; type: string }[]>(`PRAGMA table_info("${table}")`);
+    for (const { name } of columns.filter((column) => column.type === "DATETIME")) {
+      fixed += await db.$executeRawUnsafe(
+        `UPDATE "${table}" SET "${name}" = CAST(strftime('%s', "${name}") AS INTEGER) * 1000 + CAST(substr(strftime('%f', "${name}"), 4) AS INTEGER) WHERE typeof("${name}") = 'text'`,
+      );
+    }
+  }
+  return fixed;
+}
+
 /** Carrega uma cópia para uma base de dados vazia. */
 export async function loadSnapshot(db: PrismaClient, directory: string): Promise<number> {
   if (!existsSync(directory)) throw new Error(`Cópia de dados não encontrada: ${directory}`);
@@ -63,5 +80,6 @@ export async function loadSnapshot(db: PrismaClient, directory: string): Promise
     },
     { timeout: 300_000 },
   );
+  await normalizeDates(db);
   return total;
 }

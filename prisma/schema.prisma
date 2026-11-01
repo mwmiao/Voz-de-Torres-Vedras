@@ -88,6 +88,8 @@ enum UpdateCategory {
   REUNIAO
   DOCUMENTO
   ELEITO
+  SEGURANCA
+  ALERTA
 }
 
 enum ContentKind {
@@ -415,4 +417,238 @@ model FieldChange {
   event    UpdateEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId])
+}
+
+// ---------- Resumos, métricas, segurança e alertas ----------
+//
+// Todos estes modelos têm os mesmos oito campos de proveniência, com os nomes de coluna
+// source_id, source_url, publication_date, retrieval_date, geographic_area,
+// geographic_area_type, data_period e update_status.
+
+enum GeographicAreaType {
+  CONCELHO
+  FREGUESIA
+}
+
+enum AlertType {
+  METEOROLOGIA
+  PROTECAO_CIVIL
+  MOBILIDADE
+  AGUA
+  RESIDUOS
+  SAUDE
+  SERVICOS
+  SEGURANCA
+  CONSULTA
+  AVISO_MUNICIPAL
+}
+
+enum AlertSeverity {
+  INFORMATIVO
+  ATENCAO
+  IMPORTANTE
+  CRITICO
+}
+
+// Gerado por regras a partir de campos oficiais: ver src/lib/summaries.ts.
+model Summary {
+  id                 String             @id @default(cuid())
+  entityType         String
+  entityKey          String
+  title              String
+  // Falso quando a fonte é demasiado ambígua para resumir.
+  available          Boolean            @default(true)
+  simple             String?
+  meaning            String?
+  decidedBy          String
+  status             String
+  date               DateTime?
+  // Página da plataforma com o registo completo, quando existe.
+  href               String?
+  contentHash        String
+  searchText         String             @default("")
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(CONCELHO) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+
+  @@unique([entityType, entityKey])
+  @@index([date])
+  @@map("summaries")
+}
+
+model Metric {
+  id                 String             @id @default(cuid())
+  key                String
+  // Subdivisão do valor, como um tipo de procedimento. Vazio no total.
+  dimension          String             @default("")
+  period             String
+  value              Float
+  unit               String
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(CONCELHO) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+
+  @@unique([key, dimension, period])
+  @@index([key])
+  @@map("metrics")
+}
+
+model CrimeCategory {
+  id                 String             @id @default(cuid())
+  code               String             @unique
+  name               String
+  // Grupo em linguagem simples, para filtrar.
+  group              String
+  order              Int                @default(100)
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(CONCELHO) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+  records            CrimeRecord[]
+
+  @@map("crime_categories")
+}
+
+// Só dados agregados: nunca há informação sobre vítimas, suspeitos ou processos.
+model CrimeRecord {
+  id                 String             @id @default(cuid())
+  categoryCode       String
+  year               Int
+  // Nulo quando a fonte oculta o valor por segredo estatístico.
+  count              Int?
+  confidential       Boolean            @default(false)
+  // Taxa em permilagem publicada pelo INE.
+  officialRate       Float?
+  // Taxa por 1 000 residentes calculada aqui, com a população do ano indicado.
+  calculatedRate     Float?
+  populationYear     Int?
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(CONCELHO) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+  category           CrimeCategory      @relation(fields: [categoryCode], references: [code], onDelete: Cascade)
+
+  @@unique([categoryCode, geographicArea, dataPeriod])
+  @@index([year])
+  @@map("crime_records")
+}
+
+model Freguesia {
+  id                 String             @id @default(cuid())
+  slug               String             @unique
+  name               String
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(FREGUESIA) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+
+  @@map("freguesias")
+}
+
+model PopulationEstimate {
+  id                 String             @id @default(cuid())
+  year               Int
+  population         Int
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(CONCELHO) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+
+  @@unique([geographicArea, year])
+  @@map("population_estimates")
+}
+
+model AlertSource {
+  id                 String             @id
+  name               String
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(CONCELHO) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+  alerts             Alert[]
+
+  @@map("alert_sources")
+}
+
+model Alert {
+  id                 String             @id @default(cuid())
+  key                String             @unique
+  title              String
+  type               AlertType
+  severity           AlertSeverity
+  description        String
+  startsAt           DateTime?
+  // Fim oficial ou, sem ele, fim do período em que o aviso fica entre os ativos.
+  endsAt             DateTime?
+  hasOfficialEnd     Boolean            @default(false)
+  // Falso quando a fonte só indica dias, para não mostrar uma hora que ela não deu.
+  hasTime            Boolean            @default(false)
+  lastCheckedAt      DateTime
+  contentHash        String
+  searchText         String             @default("")
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Concelho de Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(CONCELHO) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+  source             AlertSource        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([endsAt])
+  @@index([type])
+  @@map("alerts")
+}
+
+// Uma linha por origem em cada execução.
+model DataUpdateLog {
+  id                 String             @id @default(cuid())
+  status             SourceRunStatus
+  newCount           Int                @default(0)
+  updatedCount       Int                @default(0)
+  unchangedCount     Int                @default(0)
+  failedCount        Int                @default(0)
+  message            String?
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime?          @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @default("Torres Vedras") @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(CONCELHO) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(UNCHANGED) @map("update_status")
+
+  @@index([retrievalDate])
+  @@map("data_update_logs")
 }

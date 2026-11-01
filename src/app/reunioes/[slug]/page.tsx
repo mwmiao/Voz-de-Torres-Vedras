@@ -3,10 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DecisionList } from "@/components/DecisionTable";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
+import { SummaryBlock } from "@/components/civic";
 import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { SOURCED_DECISION } from "@/lib/filters";
 import { BODY_LABEL, formatDate, formatTime } from "@/lib/format";
+import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,11 @@ export default async function MeetingPage({ params }: Props) {
   });
   if (!meeting) notFound();
 
+  const [meetingSummary, summaries] = await Promise.all([
+    summaryMap("reuniao", [meeting.slug]),
+    summaryMap("decisao", meeting.decisions.map((decision) => decision.slug)),
+  ]);
+  const summary = meetingSummary.get(meeting.slug);
   const byItem = [...meeting.decisions].sort((a, b) => (a.itemNumber ?? "").localeCompare(b.itemNumber ?? "", "pt", { numeric: true }));
 
   return (
@@ -39,6 +46,7 @@ export default async function MeetingPage({ params }: Props) {
         <LastUpdated date={meeting.updatedAt} className="mt-1" />
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
+        {summary ? <section aria-label="Resumo da reunião" className="max-w-3xl"><SummaryBlock summary={summary} heading={false} /></section> : null}
         {meeting.participation ? (
           <section>
             <h2 className="font-serif text-xl font-semibold">Intervenção do público</h2>
@@ -48,7 +56,7 @@ export default async function MeetingPage({ params }: Props) {
         <section>
           <h2 className="font-serif text-xl font-semibold">Agenda e decisões</h2>
           <div className="mt-3">
-            {byItem.length > 0 ? <DecisionList decisions={byItem} /> : <p className="text-sm text-muted">Pontos ainda não transcritos. Consulte os documentos oficiais abaixo.</p>}
+            {byItem.length > 0 ? <DecisionList decisions={byItem} summaries={summaries} /> : <p className="text-sm text-muted">Pontos ainda não transcritos. Consulte os documentos oficiais abaixo.</p>}
           </div>
         </section>
         <section>

@@ -41,6 +41,7 @@ export type NormalizedContract = {
 /** O conjunto de dados traz entidades HTML e aspas e travessões Windows-1252 como caracteres de controlo. */
 function decodeEntities(text: string): string {
   return text
+    .replaceAll("&amp;amp;", "&")
     .replaceAll("&amp;", "&")
     .replaceAll("&quot;", '"')
     .replaceAll("&#39;", "'")
@@ -71,6 +72,16 @@ export function isPersonNif(nif: string): boolean {
   return /^[123]\d{8}$/.test(nif);
 }
 
+export const PERSON_SUPPLIER_LABEL = "Pessoa singular (consultar no Portal BASE)";
+
+const LEGAL_ENTITY = /\b(lda|l\.da|ld\.ª|limitada|s\.?a\.?|unipessoal|sociedade|associa[çc][ãa]o|gmbh|ltd|inc|s\.?l\.?|crl|cooperativa|funda[çc][ãa]o|instituto|universidade|companhia|empresa|grupo|centro|clube|uni[ãa]o|junta|comunidade|munic[íi]pio|c[âa]mara|freguesia|f[áa]brica|igreja|servi[çc]os|ag[êe]ncia|portugal|ipss)\b/i;
+
+/** O IMPIC mascara o NIF das pessoas singulares com «-». Sem NIF, só um nome de empresa fica publicado. */
+export function isPersonSupplier(nif: string | null, name: string): boolean {
+  if (nif && isPersonNif(nif)) return true;
+  return !/^\d/.test(nif ?? "") && !LEGAL_ENTITY.test(name);
+}
+
 export function baseContractUrl(id: string): string {
   return `https://www.base.gov.pt/Base4/pt/detalhe/?type=contratos&id=${id}`;
 }
@@ -80,7 +91,7 @@ export function normalizeBaseRecord(record: BaseRecord): NormalizedContract | nu
   if (!MUNICIPAL_NIFS.includes(awarding.nif)) return null;
 
   const suppliers = (record.adjudicatarios ?? []).map(splitEntity);
-  const hasPerson = suppliers.some((supplier) => isPersonNif(supplier.nif));
+  const hasPerson = suppliers.some((supplier) => isPersonSupplier(supplier.nif, supplier.name));
   const price = Number(record.precoContratual);
   const baseId = String(record.idcontrato);
   if (!baseId || !Number.isFinite(price)) return null;
@@ -94,7 +105,7 @@ export function normalizeBaseRecord(record: BaseRecord): NormalizedContract | nu
     awardingBody: awarding.nif === "680015973" ? "SMAS de Torres Vedras" : "Município de Torres Vedras",
     awardingNif: awarding.nif,
     supplierName: hasPerson
-      ? "Pessoa singular (consultar no Portal BASE)"
+      ? PERSON_SUPPLIER_LABEL
       : suppliers.map((supplier) => supplier.name).join("; ") || "Não indicado",
     supplierNif: hasPerson ? null : (suppliers[0]?.nif ?? null),
     supplierIsPerson: hasPerson,

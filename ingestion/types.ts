@@ -1,4 +1,4 @@
-import type { Body, BudgetKind, SourceType, UpdateCategory } from "@prisma/client";
+import type { AlertSeverity, AlertType, Body, BudgetKind, GeographicAreaType, SourceType, UpdateCategory } from "@prisma/client";
 import type { NormalizedContract } from "@/lib/import/base";
 
 export type DocumentRecord = {
@@ -55,7 +55,37 @@ export type FinanceRecord = {
   sourceUrl: string;
 };
 
-export type IngestRecord = DocumentRecord | ContractRecord | ModificationRecord | MeetingRecord | OfficialRecord | FinanceRecord;
+export type AlertRecord = {
+  kind: "alert";
+  key: string;
+  title: string;
+  type: AlertType;
+  severity: AlertSeverity;
+  description: string;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  hasOfficialEnd: boolean;
+  hasTime: boolean;
+  area: string;
+  areaType: GeographicAreaType;
+  publishedAt: Date | null;
+  sourceUrl: string;
+};
+
+export type CrimeRecordInput = {
+  kind: "crime";
+  categoryCode: string;
+  year: number;
+  count: number | null;
+  confidential: boolean;
+  officialRate: number | null;
+  sourceUrl: string;
+  publishedAt: Date | null;
+};
+
+export type PopulationRecord = { kind: "population"; year: number; population: number; sourceUrl: string; publishedAt: Date | null };
+
+export type IngestRecord = DocumentRecord | ContractRecord | ModificationRecord | MeetingRecord | OfficialRecord | FinanceRecord | AlertRecord | CrimeRecordInput | PopulationRecord;
 
 export class StructureError extends Error {
   constructor(message: string) {

@@ -6,6 +6,10 @@ export function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("pt-PT", { dateStyle: "long", timeZone: TIME_ZONE }).format(date);
 }
 
+export function formatDateTime(date: Date): string {
+  return `${formatDate(date)}, ${formatTime(date)}`;
+}
+
 export function formatDateShort(date: Date): string {
   return new Intl.DateTimeFormat("pt-PT", { dateStyle: "short", timeZone: TIME_ZONE }).format(date);
 }
@@ -43,6 +47,8 @@ export const UPDATE_CATEGORY_LABEL: Record<UpdateCategory, string> = {
   REUNIAO: "Reunião",
   DOCUMENTO: "Documento",
   ELEITO: "Eleitos",
+  SEGURANCA: "Segurança",
+  ALERTA: "Alerta",
 };
 
 export const RUN_STATUS_LABEL: Record<SourceRunStatus, string> = {

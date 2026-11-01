@@ -1,0 +1,90 @@
+name: CI e publicação
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: docker.io/eazyeight/voz-de-torres-vedras
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: voz
+          POSTGRES_PASSWORD: voz_ci
+          POSTGRES_DB: voz_tv
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voz -d voz_tv"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://voz:voz_ci@localhost:5432/voz_tv?schema=public
+      AUTH_SECRET: segredo-apenas-para-testes-de-ci
+      APP_URL: http://localhost:1400
+      SEED_EXAMPLES: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx prisma migrate deploy
+      - run: npm run db:seed
+      - run: npm run build
+      - name: Testar a aplicação na porta 1400
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          PORT=1400 HOSTNAME=127.0.0.1 node .next/standalone/server.js &
+          for attempt in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:1400/api/health && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:1400/ | grep -q "Diz onde estás"
+          curl -fsS http://127.0.0.1:1400/registo | grep -q "Edital"
+
+  publish:
+    # Só publica depois de os testes passarem, e nunca a partir de pull requests.
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

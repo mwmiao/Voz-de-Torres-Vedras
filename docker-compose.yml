@@ -1,0 +1,57 @@
+services:
+  app:
+    build: .
+    ports:
+      - "1400:1400"
+    environment:
+      DATABASE_URL: postgresql://voz:voz_local@db:5432/voz_tv?schema=public
+      APP_URL: http://localhost:1400
+      PORT: "1400"
+      # Apenas para desenvolvimento local: em produção defina um segredo próprio.
+      AUTH_SECRET: ${AUTH_SECRET:-segredo-local-apenas-para-docker-compose}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      MODERATOR_EMAILS: ${MODERATOR_EMAILS:-}
+      # O MailHog recebe os emails de entrada: consulte-os em http://localhost:8025
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      SMTP_FROM: Voz de Torres Vedras <nao-responder@localhost>
+      RUN_SEED: "true"
+      SEED_EXAMPLES: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: voz
+      POSTGRES_PASSWORD: voz_local
+      POSTGRES_DB: voz_tv
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voz -d voz_tv"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "8025:8025"
+
+  # Opcional: docker compose --profile tools up
+  adminer:
+    image: adminer:5
+    profiles: ["tools"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  db-data:

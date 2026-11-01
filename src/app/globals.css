@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-serif-body), Georgia, serif;
+
+  --color-paper: #faf8f3;
+  --color-surface: #ffffff;
+  --color-ink: #17262d;
+  --color-muted: #4d5f67;
+  --color-line: #d9d6cc;
+
+  --color-record: #1b4965;
+  --color-record-soft: #e3edf3;
+  --color-opinion: #7a4b12;
+  --color-opinion-soft: #f6ecd9;
+  --color-editorial: #3f5a4c;
+  --color-editorial-soft: #e6eee8;
+  --color-sample: #5b3f75;
+  --color-sample-soft: #efe8f5;
+}
+
+html {
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-record);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+a {
+  text-underline-offset: 3px;
+}
+
+.prose-civic p + p {
+  margin-top: 0.85rem;
+}
+
+.field {
+  width: 100%;
+  border: 1px solid #8c9498;
+  border-radius: 6px;
+  background: var(--color-surface);
+  padding: 0.6rem 0.75rem;
+  font-size: 1rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 6px;
+  background: var(--color-record);
+  padding: 0.55rem 1.1rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: #143a51;
+}
+
+.btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 6px;
+  border: 1px solid #8c9498;
+  background: var(--color-surface);
+  padding: 0.55rem 1.1rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.btn-quiet:hover {
+  background: var(--color-paper);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}

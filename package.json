@@ -1,0 +1,51 @@
+{
+  "name": "voz-de-torres-vedras",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma cívica de transparência e participação para Torres Vedras: Posições · Registos · Fontes.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev -p 1400",
+    "build": "next build",
+    "start": "next start -p 1400",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:clear-examples": "tsx scripts/clear-examples.ts",
+    "import": "tsx scripts/import.ts",
+    "fetch:dataset": "tsx scripts/fetch-dataset.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "csv-parse": "^6.1.0",
+    "next": "16.4.3",
+    "nodemailer": "^7.0.10",
+    "prisma": "6.19.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tsx": "^4.20.6",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@tailwindcss/postcss": "^4.1.16",
+    "@types/node": "^22.18.0",
+    "@types/nodemailer": "^7.0.3",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "eslint": "^9.38.0",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "^4.1.16",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

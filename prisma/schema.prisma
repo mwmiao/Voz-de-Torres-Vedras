@@ -1,0 +1,470 @@
+// Voz de Torres Vedras — modelo de dados
+//
+// Regras estruturais:
+// - Identidade: guarda-se apenas um HMAC do email, nunca o email em claro.
+// - Posições: nunca são expostas individualmente; só agregadas (ver src/lib/aggregate.ts).
+// - Fontes: tudo o que é factual liga a registos `Source`.
+// - `isExample`: marca dados fictícios, que devem aparecer sempre identificados.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+enum Body {
+  ASSEMBLEIA_MUNICIPAL
+  EXECUTIVO_MUNICIPAL
+}
+
+enum MeetingStatus {
+  CONVOCADA
+  REALIZADA
+}
+
+enum AgendaStatus {
+  NAO_PUBLICADA
+  PUBLICADA
+}
+
+enum Outcome {
+  APROVADO
+  REPROVADO
+  ADIADO
+  RETIRADO
+  TOMADA_CONHECIMENTO
+  REMETIDO
+  POR_PUBLICAR
+}
+
+enum VoteMode {
+  UNANIMIDADE
+  MAIORIA
+  NAO_APLICAVEL
+}
+
+enum VoteChoice {
+  FAVOR
+  CONTRA
+  ABSTENCAO
+}
+
+enum IssueStatus {
+  RASCUNHO
+  ATIVO
+  ENCERRADO
+  ARQUIVADO
+}
+
+enum ProposalStatus {
+  SUBMETIDA
+  A_RECOLHER_APOIOS
+  EM_REVISAO
+  PROMOVIDA
+  RECUSADA
+  DUPLICADA
+}
+
+enum SourceType {
+  ATA
+  MINUTA
+  VIDEO
+  AGENDA
+  EDITAL
+  DOCUMENTO_PDF
+  ORCAMENTO
+  CONTRATO
+  DIARIO_REPUBLICA
+  PAGINA_OFICIAL
+  DATASET
+}
+
+enum ContentKind {
+  RESIDENTES
+  REGISTO_OFICIAL
+  CONTEXTO_EDITORIAL
+}
+
+enum BudgetKind {
+  RECEITA
+  DESPESA
+  SITUACAO_FINANCEIRA
+}
+
+enum ReportStatus {
+  ABERTA
+  RESOLVIDA
+  REJEITADA
+}
+
+// ---------- Contas ----------
+
+model User {
+  id          String   @id @default(cuid())
+  emailHash   String   @unique
+  role        Role     @default(USER)
+  consentedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  sessions  Session[]
+  positions Position[]
+  proposals TopicProposal[]
+  supports  ProposalSupport[]
+  reports   Report[]
+  events    ModerationEvent[]
+}
+
+model LoginToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  emailHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([emailHash])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model RateLimit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(1)
+
+  @@id([key, windowStart])
+}
+
+// ---------- Temas e posições ----------
+
+model Issue {
+  id         String      @id @default(cuid())
+  slug       String      @unique
+  title      String
+  category   String
+  summary    String
+  stage      String
+  status     IssueStatus @default(RASCUNHO)
+  isExample  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  options   IssueOption[]
+  dates     IssueDate[]
+  positions Position[]
+  claims    Claim[]
+  decisions Decision[]
+  sources   Source[]
+  proposal  TopicProposal?
+
+  @@index([status, category])
+}
+
+model IssueOption {
+  id           String     @id @default(cuid())
+  issueId      String
+  label        String
+  order        Int        @default(0)
+  // Só usado em temas de exemplo: contagens fictícias, nunca respostas reais.
+  exampleCount Int        @default(0)
+  issue        Issue      @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  positions    Position[]
+
+  @@index([issueId])
+}
+
+model IssueDate {
+  id      String   @id @default(cuid())
+  issueId String
+  date    DateTime
+  label   String
+  issue   Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+model Position {
+  id        String      @id @default(cuid())
+  userId    String
+  issueId   String
+  optionId  String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issue     Issue       @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  option    IssueOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, issueId])
+  @@index([issueId, optionId])
+}
+
+model TopicProposal {
+  id           String         @id @default(cuid())
+  title        String
+  description  String
+  category     String
+  status       ProposalStatus @default(SUBMETIDA)
+  authorId     String?
+  issueId      String?        @unique
+  duplicateOf  String?
+  moderatorNote String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  author       User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  issue        Issue?         @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  supports     ProposalSupport[]
+
+  @@index([status])
+}
+
+model ProposalSupport {
+  userId     String
+  proposalId String
+  createdAt  DateTime      @default(now())
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  proposal   TopicProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@id([userId, proposalId])
+}
+
+// ---------- Registo oficial ----------
+
+model Meeting {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  body         Body
+  date         DateTime
+  // Falso quando a fonte não indica hora.
+  hasTime      Boolean       @default(true)
+  title        String
+  location     String?
+  status       MeetingStatus @default(REALIZADA)
+  agendaStatus AgendaStatus  @default(PUBLICADA)
+  participation String?
+  isExample    Boolean       @default(false)
+  decisions    Decision[]
+  sources      Source[]
+
+  @@index([date])
+}
+
+model Decision {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  meetingId     String
+  itemNumber    String?
+  proposalRef   String?
+  title         String
+  outcome       Outcome
+  voteMode      VoteMode @default(NAO_APLICAVEL)
+  votesFor      Int?
+  votesAgainst  Int?
+  abstentions   Int?
+  isExample     Boolean  @default(false)
+  meeting       Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  votes         VoteRecord[]
+  issues        Issue[]
+  sources       Source[]
+
+  @@index([meetingId])
+  @@index([outcome])
+}
+
+// Só existe quando a fonte oficial identifica o sentido de voto.
+model VoteRecord {
+  id         String     @id @default(cuid())
+  decisionId String
+  officialId String
+  choice     VoteChoice
+  decision   Decision   @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  official   Official   @relation(fields: [officialId], references: [id], onDelete: Cascade)
+
+  @@unique([decisionId, officialId])
+}
+
+model Official {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  name       String
+  role       String
+  body       Body
+  // Nulo quando a fonte consultada não indica partido ou coligação.
+  party      String?
+  parish     String?
+  portfolios String[]
+  order      Int      @default(100)
+  active     Boolean  @default(true)
+  memberships CommitteeMembership[]
+  votes      VoteRecord[]
+  sources    Source[]
+
+  @@index([body, order])
+}
+
+model Committee {
+  id      String  @id @default(cuid())
+  slug    String  @unique
+  name    String
+  body    Body
+  members CommitteeMembership[]
+  sources Source[]
+}
+
+model CommitteeMembership {
+  committeeId String
+  officialId  String
+  isChair     Boolean   @default(false)
+  committee   Committee @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  official    Official  @relation(fields: [officialId], references: [id], onDelete: Cascade)
+
+  @@id([committeeId, officialId])
+}
+
+// ---------- Fontes ----------
+
+model Source {
+  id          String     @id @default(cuid())
+  name        String
+  title       String
+  url         String     @unique
+  type        SourceType
+  official    Boolean    @default(true)
+  publishedAt DateTime?
+  retrievedAt DateTime
+  excerpt     String?
+  isExample   Boolean    @default(false)
+  importRunId String?
+  importRun   ImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
+
+  issues     Issue[]
+  meetings   Meeting[]
+  decisions  Decision[]
+  officials  Official[]
+  committees Committee[]
+  claims     Claim[]
+  contracts  Contract[]
+  budget     BudgetEntry[]
+
+  @@index([type])
+}
+
+model Claim {
+  id        String      @id @default(cuid())
+  text      String
+  kind      ContentKind @default(CONTEXTO_EDITORIAL)
+  issueId   String?
+  isExample Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  issue     Issue?      @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  sources   Source[]
+}
+
+// ---------- Dados públicos ----------
+
+model Contract {
+  id            String    @id @default(cuid())
+  baseId        String    @unique
+  title         String
+  awardingBody  String
+  awardingNif   String
+  // Em pessoas singulares não se republica nome nem NIF: remete-se para o Portal BASE.
+  supplierName  String
+  supplierNif   String?
+  supplierIsPerson Boolean @default(false)
+  procedureType String
+  contractType  String?
+  cpvCode       String?
+  cpvLabel      String?
+  priceEur      Decimal   @db.Decimal(14, 2)
+  signedAt      DateTime?
+  publishedAt   DateTime?
+  durationDays  Int?
+  isExample     Boolean   @default(false)
+  importRunId   String?
+  importRun     ImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
+  sources       Source[]
+
+  @@index([signedAt])
+  @@index([awardingNif])
+  @@index([procedureType])
+}
+
+model BudgetEntry {
+  id        String     @id @default(cuid())
+  year      Int
+  kind      BudgetKind
+  label     String
+  amountEur Decimal    @db.Decimal(14, 2)
+  asOf      DateTime?
+  note      String?
+  isExample Boolean    @default(false)
+  sources   Source[]
+
+  @@index([year, kind])
+}
+
+// ---------- Moderação e importação ----------
+
+model Report {
+  id         String       @id @default(cuid())
+  targetType String
+  targetId   String
+  reason     String
+  status     ReportStatus @default(ABERTA)
+  reporterId String?
+  createdAt  DateTime     @default(now())
+  reporter   User?        @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+}
+
+model ModerationEvent {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String
+  note       String?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+model AppSetting {
+  key   String @id
+  value String
+}
+
+model ImportRun {
+  id          String   @id @default(cuid())
+  dataset     String
+  sourceUrl   String
+  fileName    String
+  sha256      String
+  retrievedAt DateTime
+  imported    Int      @default(0)
+  skipped     Int      @default(0)
+  errors      Json?
+  createdAt   DateTime @default(now())
+  sources     Source[]
+  contracts   Contract[]
+}

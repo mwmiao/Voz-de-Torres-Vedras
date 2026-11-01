@@ -1,0 +1,5 @@
+# Compila a imagem a partir do código, em vez de usar a publicada.
+services:
+  app:
+    build: .
+    pull_policy: build

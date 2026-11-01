@@ -1,36 +1,44 @@
+# Usa a imagem publicada, por isso funciona só com este ficheiro (por exemplo, num NAS).
+# Para compilar a partir do código: docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+
 services:
   app:
-    build: .
+    image: docker.io/eazyeight/voz-de-torres-vedras:latest
+    pull_policy: always
     ports:
-      - "1400:1400"
+      - "${APP_PORT:-1400}:1400"
     environment:
-      DATABASE_URL: postgresql://voz:voz_local@db:5432/voz_tv?schema=public
-      APP_URL: http://localhost:1400
+      DATABASE_URL: postgresql://voz:${POSTGRES_PASSWORD:-voz_local}@db:5432/voz_tv?schema=public
+      # Num NAS, indique o endereço real: é usado nas ligações de entrada enviadas por email.
+      APP_URL: ${APP_URL:-http://localhost:1400}
       PORT: "1400"
-      # Apenas para desenvolvimento local: em produção defina um segredo próprio.
+      # Apenas para testes locais: noutro ambiente defina um segredo próprio.
       AUTH_SECRET: ${AUTH_SECRET:-segredo-local-apenas-para-docker-compose}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       MODERATOR_EMAILS: ${MODERATOR_EMAILS:-}
-      # O MailHog recebe os emails de entrada: consulte-os em http://localhost:8025
-      SMTP_HOST: mailhog
-      SMTP_PORT: "1025"
-      SMTP_FROM: Voz de Torres Vedras <nao-responder@localhost>
-      RUN_SEED: "true"
-      SEED_EXAMPLES: "true"
+      # O MailHog recebe os emails de entrada: consulte-os na porta 8025.
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-Voz de Torres Vedras <nao-responder@localhost>}
+      RUN_SEED: ${RUN_SEED:-true}
+      SEED_EXAMPLES: ${SEED_EXAMPLES:-true}
     depends_on:
       db:
         condition: service_healthy
       mailhog:
         condition: service_started
+    restart: unless-stopped
 
   db:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: voz
-      POSTGRES_PASSWORD: voz_local
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voz_local}
       POSTGRES_DB: voz_tv
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -38,11 +46,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
     ports:
-      - "8025:8025"
+      - "${MAILHOG_PORT:-8025}:8025"
+    restart: unless-stopped
 
   # Opcional: docker compose --profile tools up
   adminer:

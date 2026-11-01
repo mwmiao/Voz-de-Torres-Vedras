@@ -114,19 +114,27 @@ As contas múltiplas e as alterações repetidas geram sinais de abuso no regist
 
 ## Docker
 
-Ambiente completo com aplicação, PostgreSQL e MailHog:
+Ambiente completo com aplicação, PostgreSQL e MailHog, a partir da imagem publicada. Basta o ficheiro `docker-compose.yml`, por isso serve também para um NAS:
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 - Aplicação: <http://localhost:1400>
 - Emails de entrada: <http://localhost:8025>
 
+Noutra máquina, defina num ficheiro `.env`, ao lado do `docker-compose.yml`, pelo menos `APP_URL` (o endereço real, usado nas ligações de entrada), `AUTH_SECRET` e `POSTGRES_PASSWORD`. Também pode definir `APP_PORT`, `DB_PORT`, `MAILHOG_PORT`, `ADMIN_EMAILS` e as variáveis `SMTP_*`.
+
+Para compilar a partir do código:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+```
+
 Com o Adminer, em <http://localhost:8080>:
 
 ```bash
-docker compose --profile tools up --build
+docker compose --profile tools up -d
 ```
 
 Imagem publicada, em qualquer servidor:

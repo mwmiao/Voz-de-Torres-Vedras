@@ -61,6 +61,8 @@ async function validate(db: PrismaClient) {
   if ((await db.contract.count()) === 0) problems.push("sem contratos");
   const unsourcedAlerts = await db.alert.count({ where: { sourceUrl: "" } });
   if (unsourcedAlerts > 0) problems.push(`${unsourcedAlerts} alertas sem ligação à fonte`);
+  const unsourcedIncidents = await db.incident.count({ where: { OR: [{ sourceUrl: "" }, { summary: "" }] } });
+  if (unsourcedIncidents > 0) problems.push(`${unsourcedIncidents} ocorrências sem ligação à fonte ou sem resumo`);
   const unsourcedSummaries = await db.summary.count({ where: { sourceUrl: "" } });
   if (unsourcedSummaries > 0) problems.push(`${unsourcedSummaries} resumos sem ligação à fonte`);
   if ((await db.official.count({ where: { active: true } })) < 7) problems.push("menos de 7 eleitos ativos");

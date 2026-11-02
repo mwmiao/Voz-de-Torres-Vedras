@@ -26,7 +26,7 @@ Projeto independente, sem ligação ao Município de Torres Vedras.
 | `/contratos` | Contratos, modificações e procedimentos, com filtros e somas descritivas |
 | `/reunioes` | Decisões pesquisáveis e lista de reuniões, com página por reunião |
 | `/resumos` | Resumos simples de decisões, reuniões, contratos, regulamentos e documentos |
-| `/seguranca` | Crimes registados no concelho, em vista simples e detalhada |
+| `/seguranca` | Mapa das ocorrências publicadas nos últimos 14 dias, com localização aproximada, e crimes registados por ano, em vista simples e detalhada |
 | `/alertas` | Avisos oficiais ativos e arquivo pesquisável |
 | `/metricas` | Indicadores neutros, com variações e fontes |
 | `/dossies` | Assuntos municipais com contexto, datas e decisões |
@@ -35,7 +35,7 @@ Projeto independente, sem ligação ao Município de Torres Vedras.
 | `/estado-das-fontes` | Origens de dados, última atualização, estado e erros |
 | `/metodo`, `/privacidade` | Método e tratamento de dados |
 
-Exportações CSV: `/dados/decisoes.csv`, `/dados/contratos.csv` (ambas seguem os filtros da página), `/dados/reunioes.csv`, `/dados/orcamento.csv`, `/dados/seguranca.csv`, `/dados/alertas.csv`, `/dados/metricas.csv` e `/dados/resumos.csv`.
+Exportações CSV: `/dados/decisoes.csv`, `/dados/contratos.csv` (ambas seguem os filtros da página), `/dados/reunioes.csv`, `/dados/orcamento.csv`, `/dados/seguranca.csv`, `/dados/ocorrencias.csv` (inclui o arquivo), `/dados/alertas.csv`, `/dados/metricas.csv` e `/dados/resumos.csv`.
 
 ## Tecnologia
 
@@ -145,6 +145,14 @@ Antes de recolher páginas, verificou-se se existia API, ficheiro ou índice ofi
 | `cm-prociv` | Página pública | 6 horas | Comunicados da Proteção Civil Municipal |
 | `smas-avisos` | Página pública | 3 horas | Interrupções e avisos de água |
 | `alertas-curados` | Ficheiro [prisma/data/alertas-curados.json](prisma/data/alertas-curados.json) | Com os avisos | Avisos oficiais registados à mão |
+| `gnr-comunicados` | Página pública | 12 horas | Comunicados da GNR que referem Torres Vedras |
+| `noticias-ao-minuto` | Sitemap de notícias e artigos | 3 horas | Notícias da secção País sobre ocorrências no concelho |
+| `rtv-oeste` | Feed RSS público | 3 horas | RTV Oeste: notícias de Torres Vedras e do Oeste (nível 2) |
+| `onfm-torres-vedras` | Feed RSS público da categoria Torres Vedras | 3 horas | ON FM: notícias locais e comunicados da Câmara republicados (nível 2) |
+| `mastodon-torresvedras` | API pública do Mastodon | 3 horas | Publicações públicas com etiquetas de Torres Vedras (nível 3 ou 4) |
+| `telegram-canais` | Página pública t.me/s/ | 3 horas | Canais públicos configurados (nível 3 ou 4) |
+| `ocorrencias-curadas` | Ficheiro [prisma/data/ocorrencias-curadas.json](prisma/data/ocorrencias-curadas.json) | Com as ocorrências | Ocorrências e publicações registadas à mão, de qualquer nível |
+| `badaladas`, `jn-torres-vedras`, `psp-comunicados`, `anepc-ocorrencias`, `redes-sociais-automaticas` | Desativadas, só registo à mão | Sem recolha | Ver abaixo |
 | `anepc-avisos` | Desativada | Sem recolha | Ver abaixo |
 | `dre-legislacao` | Desativada | Sem recolha | Ver abaixo |
 
@@ -157,6 +165,7 @@ As origens da Câmara usam páginas porque o site não tem API, feed nem mapa do
 - Não existem dados oficiais públicos de crimes por freguesia, nem valores mensais ou trimestrais por concelho. Danos e tráfico não são publicados por concelho. A plataforma assinala estas lacunas e não faz estimativas.
 - A execução orçamental por categoria e os projetos ativos não têm fonte estruturada. Aparecem em `/metricas` como indicadores sem dados.
 - A ANEPC recusa a leitura do `robots.txt`, pelo que a sua página não é recolhida. O fogos.pt não é uma entidade oficial e não é usado. As alterações de transportes não têm fonte estruturada e só entram quando publicadas nos avisos da Câmara.
+- O Badaladas e o Jornal de Notícias proíbem no `robots.txt` a recolha automática sem licença, e a PSP rejeita os pedidos às páginas de notícias. Facebook, Instagram e X exigem sessão e proíbem a recolha automática. Estas fontes só entram quando registadas à mão em `ocorrencias-curadas`. Não há fonte oficial aberta de ocorrências da ANEPC.
 - Os resumos são gerados por regras, a partir de campos oficiais ([src/lib/summaries.ts](src/lib/summaries.ts)). Não usam inteligência artificial nem leem PDF. Títulos ambíguos ficam com «Resumo não disponível. Consulte o documento oficial.»
 - As deliberações dos editais da Assembleia são guardadas como documentos. A transcrição ponto a ponto continua a ser feita à mão, para não publicar resultados oficiais mal interpretados.
 
@@ -270,6 +279,61 @@ Para registar um aviso oficial de uma página sem estrutura legível, acrescente
 ```json
 [{ "title": "Título", "type": "MOBILIDADE", "severity": "ATENCAO", "description": "Texto curto.", "area": "Concelho de Torres Vedras", "sourceUrl": "https://www.cm-tvedras.pt/...", "endsAt": "2026-12-01T23:59:00Z" }]
 ```
+
+### Ocorrências recentes
+
+O mapa em `/seguranca` mostra só ocorrências dos últimos 14 dias, pela data da ocorrência. Reúne fontes oficiais, imprensa e fontes locais, incluindo redes sociais, sempre com o estado de verificação à vista.
+
+**Níveis das fontes** ([src/lib/source-tiers.ts](src/lib/source-tiers.ts)):
+
+| Nível | Fonte | Exemplos |
+| --- | --- | --- |
+| 1 | Autoridade oficial | GNR, PSP, ANEPC, Proteção Civil, IPMA, Câmara Municipal, registos públicos |
+| 2 | Comunicação social | Redações com responsabilidade editorial |
+| 3 | Conta oficial em rede social | Contas registadas em `prisma/data/fontes-comunitarias.json` como de uma autoridade ou redação |
+| 4 | Fonte comunitária | Grupos locais, contas pessoais, canais, fóruns, relatos de residentes |
+
+**Estados públicos** ([src/lib/verification.ts](src/lib/verification.ts)):
+
+- **Confirmado:** pelo menos uma fonte de nível 1 corrobora. É o único estado descrito como confirmado.
+- **Reportado:** a primeira fonte é de nível 2, ou uma ocorrência que surgiu nos níveis 3 e 4 foi noticiada por duas redações independentes.
+- **Não confirmado:** só fontes de nível 3 e 4, sem ser recente, ou factos essenciais em conflito entre fontes.
+- **Em apuramento:** fonte não oficial nas primeiras 24 horas, ou situação em curso sem confirmação oficial. Volta à fila de revisão quando chega informação nova.
+
+**Cruzamento de fontes:** cada relato é comparado com as ocorrências das 48 horas à volta por categoria, freguesia, data e impressões das palavras, nunca pelo título exato. Fica guardado em `incident_references`, com nível, ligação, data, uma afirmação estruturada (tipo, área e dia) e a concordância: corrobora, acrescenta detalhe, contradiz ou não relacionada. Repetição não é confirmação: publicações da mesma conta, cópias quase iguais e notícias da Lusa republicadas contam como uma só fonte.
+
+**Revisão e arquivo:** entram na fila de revisão as ocorrências de nível 3 e 4 com alegações graves, violência, menores ou violência doméstica, as que têm fontes em conflito, as muito repetidas ou partilhadas, e as que ficam mais de 48 horas sem confirmação. Casos de redes sociais com menores ou violência doméstica, e registos com área ou categoria ambígua, só aparecem depois de revistos. São arquivadas, com o motivo, quando a publicação original é apagada, quando uma fonte oficial as contradiz, ou ao fim de 7 dias sem confirmação. Os limites ajustam-se com `INCIDENT_DEVELOPING_HOURS`, `INCIDENT_REVIEW_HOURS`, `INCIDENT_ARCHIVE_DAYS`, `INCIDENT_REPETITION_THRESHOLD` e `INCIDENT_ENGAGEMENT_THRESHOLD`.
+
+```bash
+npm run review:incidents
+```
+
+A decisão regista-se em `prisma/data/revisoes-ocorrencias.json` e aplica-se na recolha seguinte:
+
+```json
+[{ "key": "https://www.facebook.com/...", "decision": "publicar", "note": "Confirmado com a Junta de Freguesia" }]
+```
+
+`decision` pode ser `publicar` (sai da retenção), `manter` ou `arquivar`.
+
+**Privacidade:** nomes, idades, moradas, matrículas e contactos nunca são publicados. Os resumos e as afirmações são modelos neutros; o texto e o título originais não são guardados, só impressões das palavras. Em fontes de nível 3 e 4, a ligação não é publicada quando a publicação expõe dados pessoais ou não pode ser arquivada, como grupos fechados ou mensagens. Em violência doméstica fica sempre a freguesia. A localização é a freguesia, a localidade (raio de 900 m) ou uma área pública nomeada por fonte de nível 1 ou 2.
+
+**Recolha:**
+
+- `gnr-comunicados` (nível 1) e `noticias-ao-minuto` (nível 2), como antes.
+- `rtv-oeste` e `onfm-torres-vedras` (nível 2): feeds RSS públicos, com pedidos condicionais e até três páginas enquanto os artigos estiverem na janela. O texto do feed só serve para extrair data, área e tipo; guardam-se a ligação, o autor, a categoria do artigo e um resumo próprio. Na ON FM, os comunicados da Câmara republicados mantêm a autoria e contam como fonte da Câmara, não como redação independente. Nenhuma destas fontes torna uma ocorrência «Confirmado» sem uma autoridade.
+- O Jornal de Notícias proíbe no `robots.txt` a recolha automática sem licença: fica só para registo à mão.
+- `mastodon-torresvedras`: publicações públicas com as etiquetas configuradas em `prisma/data/fontes-comunitarias.json`. Publicações apagadas são detetadas e o registo é arquivado.
+- `telegram-canais`: canais públicos listados no mesmo ficheiro. Sem canais, não faz pedidos.
+- Facebook, Instagram e X não permitem recolha automática: as publicações relevantes registam-se à mão em `prisma/data/ocorrencias-curadas.json`, com o nível calculado pelo endereço ou indicado em `sourceTier`:
+
+```json
+[{ "sourceUrl": "https://www.facebook.com/groups/.../posts/...", "sourceName": "Grupo comunitário no Facebook", "sourceTier": "COMUNITARIA", "account": { "platform": "facebook", "handle": "grupo" }, "publishedAt": "2026-11-02T10:00:00Z", "incidentStart": "2026-11-02T08:00:00Z", "category": "FURTO", "freguesia": "silveira", "precision": "LOCALIDADE", "placeName": "Santa Cruz", "personalData": false }]
+```
+
+Para ligar uma fonte a uma ocorrência existente, indique `incidentKey` (URL da primeira fonte) e `agreement`. Para registar que a publicação foi apagada, `removed: true`.
+
+A tabela `incident_logs` guarda os registos novos, atualizados, duplicados, recusados, arquivados e enviados para revisão, com o motivo. Os limites das freguesias estão em [public/geo/freguesias-torres-vedras.json](public/geo/freguesias-torres-vedras.json), simplificados a partir da CAOP 2025 da DGT. O mapa de fundo é do OpenStreetMap.
 
 ## Docker
 

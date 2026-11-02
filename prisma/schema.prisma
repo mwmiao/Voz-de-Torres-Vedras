@@ -652,3 +652,183 @@ model DataUpdateLog {
   @@index([retrievalDate])
   @@map("data_update_logs")
 }
+
+// ---------- Ocorrências recentes ----------
+//
+// Ocorrências das duas últimas semanas, de fontes oficiais, da imprensa e de fontes locais.
+// O estado de verificação resulta das fontes que a corroboram ou contradizem: repetição não é confirmação.
+// A localização é sempre aproximada: freguesia, localidade ou zona, nunca uma morada.
+
+enum IncidentCategory {
+  ROUBO
+  FURTO
+  VIOLENCIA_DOMESTICA
+  AGRESSAO
+  DANOS
+  TRANSITO
+  INCENDIO
+  ACIDENTE
+  SEGURANCA_PUBLICA
+  PROTECAO_CIVIL
+  OUTRO
+}
+
+// Nível 1 a 4: autoridade, imprensa, conta oficial em rede social, fonte comunitária.
+enum SourceTier {
+  OFICIAL
+  IMPRENSA
+  CONTA_OFICIAL
+  COMUNITARIA
+}
+
+enum VerificationStatus {
+  CONFIRMADO
+  REPORTADO
+  NAO_CONFIRMADO
+  EM_APURAMENTO
+}
+
+// Fase indicada pela fonte, quando a indica.
+enum IncidentPhase {
+  EM_CURSO
+  RESOLVIDO
+}
+
+enum GeoPrecision {
+  FREGUESIA
+  LOCALIDADE
+  AREA_PUBLICA
+  ZONA_APROXIMADA
+}
+
+enum ReviewStatus {
+  NAO_NECESSARIA
+  PENDENTE
+  REVISTA
+}
+
+enum Agreement {
+  CORROBORA
+  CONTRADIZ
+  ACRESCENTA
+  NAO_RELACIONADO
+}
+
+enum IncidentLogAction {
+  NOVO
+  ATUALIZADO
+  DUPLICADO
+  REJEITADO
+  ARQUIVADO
+  REVISAO
+}
+
+model Incident {
+  id                 String             @id @default(cuid())
+  // URL canónico da primeira fonte.
+  key                String             @unique
+  category           IncidentCategory
+  // Etiquetas secundárias, separadas por vírgulas.
+  tags               String             @default("")
+  // Gerado a partir de modelos neutros: nunca copia nomes ou detalhes do processo.
+  summary            String
+  // Impressões das palavras do título e do texto: permitem comparar sem guardar o texto.
+  titleFingerprint   String             @default("")
+  textFingerprint    String             @default("")
+  sourceName         String
+  sourceTier         SourceTier         @map("source_tier")
+  // Conta ou publicação independente: duas fontes com a mesma chave contam como uma.
+  independenceKey    String
+  author             String?
+  // Secção ou categoria do artigo na fonte, como «Sociedade».
+  articleCategory    String?
+  // Falso quando a publicação original expõe dados pessoais ou não pode ser arquivada.
+  sourceLinkPublic   Boolean            @default(true)
+  sourceLinkNote     String?
+  incidentStart      DateTime
+  incidentEnd        DateTime?
+  // Falso quando a fonte só indica o dia.
+  hasTime            Boolean            @default(false)
+  phase              IncidentPhase?
+  verificationStatus VerificationStatus @map("verification_status")
+  hasConflict        Boolean            @default(false)
+  // Indícios no texto, sem o texto: «grave», «menores», «desmentido».
+  flags              String             @default("")
+  engagement         Int                @default(0)
+  firstReportedAt    DateTime           @map("first_reported_at")
+  lastCheckedAt      DateTime           @map("last_checked_at")
+  reviewStatus       ReviewStatus       @default(NAO_NECESSARIA) @map("review_status")
+  reviewReasons      String             @default("")
+  // Retido até revisão: não aparece no mapa nem no CSV.
+  heldForReview      Boolean            @default(false)
+  sourceRemovedAt    DateTime?
+  sourceChanged      Boolean            @default(false)
+  archivedAt         DateTime?
+  archiveReason      String?            @map("archive_reason")
+  freguesiaSlug      String
+  placeName          String
+  precision          GeoPrecision
+  latitude           Float
+  longitude          Float
+  // Raio da zona aproximada, em metros. Nulo ao nível da freguesia.
+  radiusM            Int?
+  contentHash        String
+  sourceId           String             @map("source_id")
+  sourceUrl          String             @map("source_url")
+  publicationDate    DateTime           @map("publication_date")
+  retrievalDate      DateTime           @map("retrieval_date")
+  geographicArea     String             @map("geographic_area")
+  geographicAreaType GeographicAreaType @default(FREGUESIA) @map("geographic_area_type")
+  dataPeriod         String             @default("") @map("data_period")
+  updateStatus       UpdateStatus       @default(NEW) @map("update_status")
+  references         IncidentReference[]
+
+  @@index([incidentStart])
+  @@index([freguesiaSlug])
+  @@index([verificationStatus])
+  @@map("incidents")
+}
+
+// Outras fontes sobre a mesma ocorrência: as que corroboram, acrescentam ou contradizem.
+model IncidentReference {
+  id               String     @id @default(cuid())
+  incidentId       String
+  sourceName       String
+  sourceTier       SourceTier @map("source_tier")
+  url              String
+  independenceKey  String
+  author           String?
+  articleCategory  String?
+  publicationDate  DateTime   @map("publication_date")
+  // Afirmação estruturada, escrita por modelo: tipo, área e data. Nunca um excerto com dados pessoais.
+  claim            String
+  agreement        Agreement
+  // Mesma conta ou cópia de outra publicação: guardada, mas não conta como fonte independente.
+  duplicateOfUrl   String?
+  titleFingerprint String     @default("")
+  linkPublic       Boolean    @default(true)
+  engagement       Int        @default(0)
+  removedAt        DateTime?
+  sourceId         String     @map("source_id")
+  retrievalDate    DateTime   @map("retrieval_date")
+  incident         Incident   @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@unique([incidentId, url])
+  @@index([url])
+  @@map("incident_references")
+}
+
+// Registos novos, atualizados, duplicados, recusados, arquivados e revistos, para auditoria.
+model IncidentLog {
+  id             String            @id @default(cuid())
+  action         IncidentLogAction
+  reason         String
+  sourceUrl      String            @map("source_url")
+  duplicateOfKey String?
+  sourceId       String            @map("source_id")
+  retrievalDate  DateTime          @map("retrieval_date")
+
+  @@index([retrievalDate])
+  @@index([sourceUrl])
+  @@map("incident_logs")
+}

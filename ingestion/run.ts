@@ -3,18 +3,20 @@
 //   npm run update:data -- --source cm-editais --source base-anuncios
 //   npm run update:data -- --force     ignora a frequência de cada origem
 //   npm run update:data -- --strict    termina com erro se alguma origem falhar
-//   npm run update:alerts              só as origens de avisos urgentes
+//   npm run update:alerts              só as origens de avisos urgentes e de ocorrências recentes
 
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { PrismaClient, type SourceRunStatus } from "@prisma/client";
 import { SOURCE_CATALOG, type SourceDefinition } from "@/lib/source-catalog";
 import { PoliteHttp } from "./fetchers/http";
+import { selectSources } from "./select";
 import { COLLECTORS } from "./sources";
 import type { IngestRecord } from "./types";
 import { deriveAll } from "./derive";
 import { applyRecord, retireMissingOfficials, type ApplyContext } from "./updaters/apply";
 import { closeMissingAlerts } from "./updaters/civic";
+import { logIncident, reconcileIncidents } from "./updaters/incidents";
 import { validateRecord } from "./validators";
 
 type Summary = { id: string; status: SourceRunStatus | "IGNORADA"; created: number; updated: number; unchanged: number; failed: number; message?: string };
@@ -32,6 +34,8 @@ async function applyAll(context: ApplyContext, records: IngestRecord[], summary:
     if (problems.length > 0) {
       summary.failed += 1;
       errors.push(`${record.kind}: ${problems.join("; ")}`);
+      // Uma ocorrência recusada fica no registo de auditoria, com o motivo.
+      if (record.kind === "incident") await logIncident(context, "REJEITADO", record.sourceUrl, problems.join("; "));
       continue;
     }
     try {
@@ -144,17 +148,11 @@ async function main() {
   const unknown = only.filter((id) => !COLLECTORS[id]);
   if (unknown.length > 0) throw new Error(`Origem desconhecida: ${unknown.join(", ")}`);
 
-  const selected = SOURCE_CATALOG.filter(
-    (source) =>
-      source.enabled &&
-      COLLECTORS[source.id] &&
-      !disabled.includes(source.id) &&
-      (only.length === 0 || only.includes(source.id)) &&
-      (!alertsOnly || source.group === "alertas"),
-  );
+  const selected = selectSources(SOURCE_CATALOG, COLLECTORS, { only, disabled, alertsOnly });
   const db = new PrismaClient();
   const http = new PoliteHttp();
   const summaries: Summary[] = [];
+  const runStartedAt = new Date();
   try {
     for (const source of selected) {
       process.stdout.write(`${source.id} ... `);
@@ -162,6 +160,11 @@ async function main() {
       summaries.push(summary);
       console.log(`${summary.status}${summary.message ? ` (${summary.message.slice(0, 160)})` : ""}`);
       http.saveCache();
+    }
+    // Estado, revisão e arquivo das ocorrências, a partir de todas as fontes recolhidas.
+    if (selected.some((source) => source.group === "ocorrencias")) {
+      const reconciled = await reconcileIncidents(db, { now: new Date(), runStartedAt });
+      console.log(`Ocorrências: ${reconciled.updated} reavaliadas, ${reconciled.archived} arquivadas, ${reconciled.pending} por rever.`);
     }
     const derived = await deriveAll(db);
     console.log(`Derivados: ${derived.summaries} resumos e ${derived.metrics} métricas atualizados.`);
@@ -175,8 +178,8 @@ async function main() {
 
   // Datas de verificação mudam sempre: só registos novos ou alterados justificam publicar dados.
   if (process.env.GITHUB_OUTPUT) {
-    // Os avisos passam depressa: sozinhos, não justificam um pull request.
-    const alerts = new Set(SOURCE_CATALOG.filter((source) => source.group === "alertas").map((source) => source.id));
+    // Os avisos e as ocorrências passam depressa: sozinhos, não justificam um pull request.
+    const alerts = new Set(SOURCE_CATALOG.filter((source) => source.group !== undefined).map((source) => source.id));
     const changed = summaries.some((item) => !alerts.has(item.id) && item.created + item.updated > 0);
     appendFileSync(process.env.GITHUB_OUTPUT, `alterado=${changed}\n`);
   }

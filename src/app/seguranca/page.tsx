@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bars } from "@/components/Bars";
+import { IncidentSection } from "@/components/IncidentSection";
 import { Disclosure, EmptyState, ExternalLink, MetricCard, ScrollTable, SectionHead, TrendText } from "@/components/civic";
 import { CsvLink, LastUpdated, PageHead } from "@/components/labels";
 import { db } from "@/lib/db";
@@ -12,7 +13,10 @@ import { searchKey } from "@/lib/search";
 import { compareValues } from "@/lib/trends";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Segurança", description: "Crimes registados no concelho de Torres Vedras, por ano e categoria, com fontes oficiais." };
+export const metadata: Metadata = {
+  title: "Segurança",
+  description: "Mapa das ocorrências publicadas nas últimas duas semanas e crimes registados no concelho de Torres Vedras, por ano e categoria, com fontes identificadas.",
+};
 
 const OFFICIAL_LINKS = [
   { label: "INE: crimes registados (NUTS 2024)", url: "https://www.ine.pt/xurl/indx/0012261/PT" },
@@ -40,7 +44,7 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
 
   const head = (
     <PageHead title="Segurança">
-      <p>Crimes registados no concelho de Torres Vedras, com dados anuais do INE e da Direção-Geral da Política de Justiça.</p>
+      <p>Ocorrências publicadas nas últimas duas semanas, num mapa com localizações aproximadas, e crimes registados por ano, com dados do INE e da Direção-Geral da Política de Justiça.</p>
       <LastUpdated date={updated} className="mt-1" />
     </PageHead>
   );
@@ -49,7 +53,10 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
     return (
       <>
         {head}
-        <div className="mx-auto max-w-6xl px-4 py-8"><EmptyState title="Os dados de segurança ainda não foram recolhidos.">Voltarão a ser consultados na próxima atualização.</EmptyState></div>
+        <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
+          <IncidentSection params={params} />
+          <EmptyState title="As estatísticas anuais ainda não foram recolhidas.">Voltarão a ser consultadas na próxima atualização.</EmptyState>
+        </div>
       </>
     );
   }
@@ -82,12 +89,16 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
     <>
       {head}
       <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-        <p className="rounded-lg border border-line bg-record-soft p-4 font-medium">{CRIME_DISCLAIMER}</p>
+        <IncidentSection params={params} />
 
-        <nav aria-label="Vistas de segurança" className="flex gap-2">
-          <Link href="/seguranca" aria-current={!detailed ? "page" : undefined} className={!detailed ? "btn no-underline" : "btn-quiet no-underline"}>Vista simples</Link>
-          <Link href="/seguranca?vista=detalhada" aria-current={detailed ? "page" : undefined} className={detailed ? "btn no-underline" : "btn-quiet no-underline"}>Vista detalhada</Link>
-        </nav>
+        <div className="space-y-4 border-t border-line pt-8">
+          <SectionHead id="estatisticas" title="Crimes registados por ano">Estatísticas oficiais anuais do concelho. São dados diferentes das ocorrências acima e chegam com mais de um ano de atraso.</SectionHead>
+          <p className="rounded-lg border border-line bg-record-soft p-4 font-medium">{CRIME_DISCLAIMER}</p>
+          <nav aria-label="Vistas das estatísticas anuais" className="flex gap-2">
+            <Link href="/seguranca#estatisticas" aria-current={!detailed ? "page" : undefined} className={!detailed ? "btn no-underline" : "btn-quiet no-underline"}>Vista simples</Link>
+            <Link href="/seguranca?vista=detalhada#estatisticas" aria-current={detailed ? "page" : undefined} className={detailed ? "btn no-underline" : "btn-quiet no-underline"}>Vista detalhada</Link>
+          </nav>
+        </div>
 
         {!detailed ? (
           <>

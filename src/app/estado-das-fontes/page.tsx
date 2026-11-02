@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { PageHead } from "@/components/labels";
 import { db } from "@/lib/db";
 import { formatDate, formatNumber, formatTime, RUN_STATUS_LABEL } from "@/lib/format";
-import { SOURCE_CATALOG, type FetchMethod } from "@/lib/source-catalog";
+import { SOURCE_CATALOG, SOURCE_STATUS_LABEL, sourceStatus, type FetchMethod } from "@/lib/source-catalog";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Estado das fontes", description: "Origens dos dados, última atualização, estado e erros de cada recolha." };
@@ -22,7 +22,7 @@ function frequency(hours: number): string {
 }
 
 export default async function EstadoDasFontesPage() {
-  const [states, sources, contracts, meetings, officials, budget, decisions, modifications] = await Promise.all([
+  const [states, sources, contracts, meetings, officials, budget, decisions, modifications, incidents, references] = await Promise.all([
     db.dataSourceState.findMany(),
     db.source.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
     db.contract.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
@@ -31,6 +31,8 @@ export default async function EstadoDasFontesPage() {
     db.budgetEntry.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
     db.decision.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
     db.contractModification.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
+    db.incident.groupBy({ by: ["sourceId"], _count: { _all: true } }),
+    db.incidentReference.groupBy({ by: ["sourceId"], _count: { _all: true } }),
   ]);
   const stateById = new Map(states.map((state) => [state.id, state]));
   const counts = new Map<string, number>();
@@ -39,6 +41,7 @@ export default async function EstadoDasFontesPage() {
       if (row.dataSourceId) counts.set(row.dataSourceId, (counts.get(row.dataSourceId) ?? 0) + row._count._all);
     }
   }
+  for (const row of [...incidents, ...references]) counts.set(row.sourceId, (counts.get(row.sourceId) ?? 0) + row._count._all);
 
   return (
     <>
@@ -54,7 +57,8 @@ export default async function EstadoDasFontesPage() {
               <li key={source.id} className="rounded-lg border border-line bg-surface p-5">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-block rounded bg-record-soft px-1.5 py-0.5 text-xs font-semibold text-record">{METHOD_LABEL[source.method]}</span>
-                  {!source.enabled ? <span className="inline-block rounded border border-dashed border-muted px-1.5 py-0.5 text-xs font-semibold text-muted">Recolha desativada</span> : null}
+                  {sourceStatus(source) !== "ATIVA" ? <span className="inline-block rounded border border-dashed border-muted px-1.5 py-0.5 text-xs font-semibold text-muted">{SOURCE_STATUS_LABEL[sourceStatus(source)]}</span> : null}
+                  {source.tier ? <span className="inline-block rounded border border-line px-1.5 py-0.5 text-xs font-semibold">Nível {source.tier}</span> : null}
                 </div>
                 <h2 className="mt-2 font-serif text-lg font-semibold">
                   <a href={source.baseUrl} target="_blank" rel="noopener noreferrer" className="underline">
@@ -64,6 +68,12 @@ export default async function EstadoDasFontesPage() {
                 </h2>
                 <p className="mt-1 text-sm text-muted">{source.description}</p>
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+                  {source.coverage ? (
+                    <>
+                      <dt className="text-muted">Cobertura</dt>
+                      <dd>{source.coverage}</dd>
+                    </>
+                  ) : null}
                   <dt className="text-muted">Identificador</dt>
                   <dd><code className="text-xs">{source.id}</code></dd>
                   <dt className="text-muted">Última atualização</dt>

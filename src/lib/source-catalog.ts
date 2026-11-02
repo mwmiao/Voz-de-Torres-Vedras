@@ -21,6 +21,11 @@ export type SourceDefinition = {
   coverage?: string;
   /** Sem recolha automática, a fonte entra só por registo à mão em ocorrencias-curadas. */
   manualOnly?: boolean;
+  /**
+   * Versão do recolhedor. Aumente-a quando a recolha ou a interpretação mudarem: na recolha seguinte,
+   * a origem corre logo, sem esperar pela frequência, para que uma atualização não fique horas sem efeito.
+   */
+  version?: number;
   description: string;
   /** Regras aplicadas ao validar os registos. */
   validation: string;
@@ -249,6 +254,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "gnr-comunicados",
+    version: 2,
     tier: 1,
     coverage: "Nacional, filtrado para Torres Vedras",
     name: "GNR: comunicados de imprensa",
@@ -263,6 +269,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "noticias-ao-minuto",
+    version: 2,
     tier: 2,
     coverage: "Nacional, filtrado para Torres Vedras",
     name: "Notícias ao Minuto: secção País",
@@ -278,11 +285,13 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "ocorrencias-curadas",
+    version: 2,
     coverage: "Concelho de Torres Vedras",
     name: "Ocorrências verificadas à mão",
     baseUrl: "https://www.gnr.pt/comunicados.aspx",
     method: "TRANSCRICAO",
-    frequencyHours: 1,
+    // Ficheiro local: lido em cada ciclo, para que um registo novo apareça logo.
+    frequencyHours: 0,
     group: "ocorrencias",
     enabled: true,
     description: "Ocorrências e publicações registadas por uma pessoa, em prisma/data/ocorrencias-curadas.json: notícias de sites sem recolha automática e publicações de Facebook, Instagram ou X.",
@@ -291,6 +300,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "rtv-oeste",
+    version: 2,
     name: "RTV Oeste",
     baseUrl: "https://www.rtvon.pt/feed/",
     method: "API",
@@ -305,6 +315,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "onfm-torres-vedras",
+    version: 2,
     name: "ON FM: Torres Vedras",
     baseUrl: "https://onfm.pt/category/torres-vedras/feed/",
     method: "API",
@@ -335,6 +346,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "mastodon-torresvedras",
+    version: 2,
     tier: 4,
     coverage: "Etiquetas sobre Torres Vedras",
     name: "Mastodon: etiquetas de Torres Vedras",
@@ -349,6 +361,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "telegram-canais",
+    version: 2,
     tier: 4,
     coverage: "Canais configurados",
     name: "Telegram: canais públicos",

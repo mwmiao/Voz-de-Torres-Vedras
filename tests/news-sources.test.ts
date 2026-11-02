@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { PoliteHttp } from "../ingestion/fetchers/http";
 import { canonicalArticleUrl, parseRssFeed } from "../ingestion/parsers/noticias-rss";
 import { buildIncident } from "../ingestion/parsers/ocorrencias";
-import { selectSources } from "../ingestion/select";
+import { isDue, selectSources } from "../ingestion/select";
 import { COLLECTORS, newsFeedCollector, type CollectorInput } from "../ingestion/sources";
 import type { IncidentRecord, IngestRecord } from "../ingestion/types";
 import { filterIncidents } from "../src/lib/incidents";
@@ -218,5 +218,25 @@ describe("filtro por fonte", () => {
     expect(filterIncidents(items, { fonte: "ON FM" })).toEqual([items[0], items[1]]);
     expect(filterIncidents(items, { fonte: "RTV Oeste", estado: "CONFIRMADO" })).toEqual([items[2]]);
     expect(filterIncidents(items, { fonte: "Jornal de Notícias" })).toEqual([]);
+  });
+});
+
+describe("frequência e versão das origens", () => {
+  const at = new Date("2026-11-02T17:50:00Z");
+  const ranAt = new Date("2026-11-02T16:46:00Z");
+
+  it("corre logo quando o recolhedor mudou de versão, mesmo dentro da frequência", () => {
+    const rtv = source("rtv-oeste");
+    expect(rtv.version).toBe(2);
+    // Imagem anterior: recolheu às 16h46 sem versão. A nova não espera pelas 19h46.
+    expect(isDue(rtv, { lastSuccessAt: ranAt, configVersion: null }, at)).toBe(true);
+    expect(isDue(rtv, { lastSuccessAt: ranAt, configVersion: 2 }, at)).toBe(false);
+    expect(isDue(rtv, { lastSuccessAt: ranAt, configVersion: 2 }, new Date("2026-11-02T19:46:00Z"))).toBe(true);
+  });
+
+  it("lê o registo à mão em cada ciclo, e corre sempre quando forçado ou nunca executado", () => {
+    expect(isDue(source("ocorrencias-curadas"), { lastSuccessAt: at, configVersion: 2 }, at)).toBe(true);
+    expect(isDue(source("onfm-torres-vedras"), { lastSuccessAt: at, configVersion: 2 }, at, true)).toBe(true);
+    expect(isDue(source("onfm-torres-vedras"), null, at)).toBe(true);
   });
 });

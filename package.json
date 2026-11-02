@@ -23,6 +23,7 @@
     "update:data": "tsx ingestion/run.ts",
     "update:alerts": "tsx ingestion/run.ts --alertas",
     "review:incidents": "tsx scripts/review-incidents.ts",
+    "diagnose:incidents": "tsx scripts/diagnose-incidents.ts",
     "data:bootstrap": "tsx scripts/data.ts bootstrap",
     "data:export": "tsx scripts/data.ts export",
     "data:load": "tsx scripts/data.ts load",

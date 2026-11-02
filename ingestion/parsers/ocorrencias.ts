@@ -1,7 +1,7 @@
 import type { GeoPrecision, IncidentCategory, IncidentPhase, SourceTier } from "@prisma/client";
 import * as cheerio from "cheerio";
 import { FREGUESIAS } from "@/lib/alerts";
-import { FREGUESIA_POINTS, INCIDENT_CATEGORY_LABEL, LOCALIDADES, PRECISION_RADIUS_M, WINDOW_DAYS } from "@/lib/incidents";
+import { CONCELHO, CONCELHO_NAME, CONCELHO_POINT, FREGUESIA_POINTS, INCIDENT_CATEGORY_LABEL, LOCALIDADES, PRECISION_RADIUS_M, WINDOW_DAYS } from "@/lib/incidents";
 import { searchKey } from "@/lib/search";
 import { detectPersonalData, independenceKey, isArchivable } from "@/lib/source-tiers";
 import { fingerprintSimilarity } from "@/lib/verification";
@@ -24,7 +24,8 @@ const CATEGORY_RULES: [IncidentCategory, RegExp][] = [
   ["DANOS", /\bdanos\b|vandal|danificad/],
   ["PROTECAO_CIVIL", /protecao civil|inundac|\bcheias?\b|queda de arvore|deslizamento|derrocada|mau tempo|tempestade|\bsismo/],
   ["TRANSITO", /\btransito\b|conducao sob|taxa de alcool|excesso de velocidade|sem habilitacao|sem carta\b|estrada cortada|corte de estrada|operacao stop/],
-  ["SEGURANCA_PUBLICA", /\bdetid|\bdetenc|apreens|trafico|estupefac|\barmas?\b|desaparecid|\bburla|ameaca/],
+  // Inclui investigações sem crime ainda definido: «a PJ investiga» é uma ocorrência, mesmo sem tipo confirmado.
+  ["SEGURANCA_PUBLICA", /\bdetid|\bdetenc|apreend|apreens|trafico|estupefac|\barmas?\b|desaparecid|\bburla|ameaca|investig|policia judiciaria|\bpj\b|policia maritima|contrabando|suspeit/],
 ];
 
 /** Iniciativas, balanços e campanhas não são ocorrências. */
@@ -32,6 +33,16 @@ const NOT_AN_INCIDENT = /\bcampanha\b|sensibiliza|\bbalanco\b|atividade operacio
 
 /** Indício de que um título é sobre uma ocorrência: só esses artigos são abertos. */
 export const INCIDENT_HINT = new RegExp(CATEGORY_RULES.map(([, rule]) => rule.source).join("|"));
+
+/** Autoridades que, nas etiquetas de um artigo, indicam uma ocorrência mesmo com um título sem palavras-chave. */
+const AUTHORITY_HINT = /\bgnr\b|guarda nacional republicana|\bpsp\b|policia|\bpj\b|bombeiros|protecao civil|\banepc\b|\binem\b/;
+
+/** Pré-filtro dos feeds: o título ou as etiquetas da fonte sugerem uma ocorrência. */
+export function looksLikeIncident(title: string, categories: string[] = []): boolean {
+  const head = searchKey(title);
+  const tags = searchKey(categories.join(" "));
+  return INCIDENT_HINT.test(head) || INCIDENT_HINT.test(tags) || AUTHORITY_HINT.test(tags);
+}
 
 export function classifyIncident(title: string, text: string): { category: IncidentCategory; tags: string[]; confident: boolean } | null {
   const head = searchKey(title);
@@ -53,6 +64,7 @@ const LOCATIVE = "(?:em|na|no|nas|nos|de|da|do|das|dos|freguesia d[aeo]|localida
 
 const placeRegex = (pattern: string) => new RegExp(`(?:^|[^a-z0-9])${LOCATIVE}\\s+${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^a-z0-9])`, "g");
 const mentions = (key: string, pattern: string) => new RegExp(`(?:^|[^a-z0-9])${pattern}(?=$|[^a-z0-9])`).test(key);
+const mentionsAsPlace = (key: string, pattern: string) => new RegExp(`(?:^|[^a-z0-9])(?:em|na|no|nas|nos|concelho d[aeo]|freguesia d[aeo]|zona d[aeo])\\s+${pattern}(?=$|[^a-z0-9])`).test(key);
 
 export const mentionsConcelho = (text: string) => mentions(searchKey(text), "torres vedras");
 
@@ -71,6 +83,11 @@ export function freguesiaPlace(slug: string): Place | null {
   const point = FREGUESIA_POINTS[slug];
   if (!point) return null;
   return { freguesiaSlug: slug, placeName: FREGUESIA_NAME[slug], precision: "FREGUESIA", latitude: point[0], longitude: point[1], radiusM: null };
+}
+
+/** Só o concelho: o ponto serve para ancorar o painel do mapa, e a área é o concelho inteiro. */
+export function concelhoPlace(): Place {
+  return { freguesiaSlug: CONCELHO, placeName: CONCELHO_NAME, precision: "CONCELHO", latitude: CONCELHO_POINT[0], longitude: CONCELHO_POINT[1], radiusM: null };
 }
 
 export function localidadePlace(name: string): Place | null {
@@ -103,7 +120,9 @@ export function detectPlace(text: string): { place: Place | null; doubts: string
   const doubts: string[] = [];
   const slugs = new Set(found.map((item) => item.place.freguesiaSlug));
   if (slugs.size > 1) doubts.push("refere mais do que uma freguesia");
-  const others = OTHER_CONCELHOS.filter((name) => mentions(key, name));
+  // Um concelho vizinho só conta como lugar («na Lourinhã», «no concelho de Sobral»), não como nome
+  // de uma instituição («Bombeiros Voluntários da Lourinhã», «Esquadra de Investigação Criminal de Loures»).
+  const others = OTHER_CONCELHOS.filter((name) => mentionsAsPlace(key, name));
   if (others.length > 0) doubts.push(`refere também outros concelhos (${others.join(", ")})`);
   const first = found[0]?.place;
   if (!first) return { place: null, doubts, concelho };
@@ -217,7 +236,8 @@ const SUMMARY_LEAD: Record<IncidentCategory, string> = {
  * Diz só o tipo e a área; o estado de verificação aparece ao lado.
  */
 export function neutralSummary(category: IncidentCategory, place: Pick<Place, "placeName" | "precision">): string {
-  const where = place.precision === "FREGUESIA" ? `na área da freguesia de ${place.placeName}` : `na zona de ${place.placeName}`;
+  const where =
+    place.precision === "CONCELHO" ? "no concelho de Torres Vedras, sem freguesia indicada na fonte" : place.precision === "FREGUESIA" ? `na área da freguesia de ${place.placeName}` : `na zona de ${place.placeName}`;
   return `${SUMMARY_LEAD[category]} ${where}.`;
 }
 
@@ -273,21 +293,27 @@ export function buildIncident(input: ArticleInput): IncidentRecord | IncidentRej
   const { place: detected, doubts, concelho } = detectPlace(full);
   // Há lugares com o mesmo nome noutros concelhos, como Maceira ou Santa Cruz.
   if (!concelho && !input.concelhoImplied) return reject(url, "não refere o concelho de Torres Vedras");
-  if (!detected) {
+  // Autoridades e imprensa podem ficar ao nível do concelho; redes sociais precisam de uma freguesia ou localidade.
+  const reliable = sourceTier === "OFICIAL" || sourceTier === "IMPRENSA";
+  let located = detected;
+  if (!located) {
     // Hospitais, tribunais e destacamentos com sede em Torres Vedras aparecem em notícias de outros concelhos.
     const elsewhere = doubts.find((doubt) => doubt.startsWith("refere também outros concelhos"));
     if (elsewhere) return reject(url, `a ocorrência é noutro concelho: ${elsewhere.replace("refere também outros concelhos ", "")}`);
-    return reject(url, "sem área geográfica utilizável: a fonte só indica o concelho");
+    if (!reliable) return reject(url, "sem área geográfica utilizável: a fonte só indica o concelho");
+    located = concelhoPlace();
   }
-  const date = parseIncidentDate(full, published);
-  if (!date) return reject(url, "sem data da ocorrência");
+  // Sem data da ocorrência, autoridades e imprensa ficam com a data de publicação, assinalada como tal.
+  const parsedDate = parseIncidentDate(full, published);
+  if (!parsedDate && !reliable) return reject(url, "sem data da ocorrência");
+  const date = parsedDate ?? { start: published, hasTime: false };
   if (date.start.getTime() < now.getTime() - (WINDOW_DAYS + 1) * DAY_MS) return reject(url, `ocorrência com mais de ${WINDOW_DAYS} dias`);
 
   // Em violência doméstica, uma localidade pequena pode identificar as pessoas: fica a freguesia.
-  const place = classification.category === "VIOLENCIA_DOMESTICA" && detected.precision !== "FREGUESIA" ? freguesiaPlace(detected.freguesiaSlug)! : detected;
+  const place = classification.category === "VIOLENCIA_DOMESTICA" && located.precision !== "FREGUESIA" && located.precision !== "CONCELHO" ? freguesiaPlace(located.freguesiaSlug)! : located;
   const doubtsAll = [...doubts];
   if (!classification.confident) doubtsAll.push("a categoria só foi encontrada no corpo do texto");
-  const flags = detectFlags(full);
+  const flags = [...detectFlags(full), ...(parsedDate ? [] : ["data-da-publicacao"])];
   const denies = flags.includes("desmentido");
 
   // Em redes sociais e fontes comunitárias, a ligação só é publicada sem dados pessoais e quando pode ser arquivada.

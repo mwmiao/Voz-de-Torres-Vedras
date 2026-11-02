@@ -53,7 +53,7 @@ export type Claim = {
 
 export type Candidate = Claim & { id: string };
 
-const PRECISION_RANK: Record<GeoPrecision, number> = { FREGUESIA: 0, ZONA_APROXIMADA: 1, LOCALIDADE: 2, AREA_PUBLICA: 3 };
+const PRECISION_RANK: Record<GeoPrecision, number> = { CONCELHO: -1, FREGUESIA: 0, ZONA_APROXIMADA: 1, LOCALIDADE: 2, AREA_PUBLICA: 3 };
 
 /**
  * Procura a ocorrência a que um relato se refere, sem depender do texto exato do título: compara
@@ -65,8 +65,12 @@ export function matchClaim(claim: Claim, candidates: Candidate[]): { candidate: 
     const hours = Math.abs(claim.incidentStart.getTime() - candidate.incidentStart.getTime()) / HOUR_MS;
     if (hours > 48) continue;
     const similarity = fingerprintSimilarity(claim.titleFingerprint, candidate.titleFingerprint);
-    const sameArea = claim.freguesiaSlug === candidate.freguesiaSlug;
-    const kind = sameKind(claim.category, candidate.category);
+    // Uma fonte que só indica o concelho não contradiz outra que indica a freguesia.
+    const sameArea = claim.freguesiaSlug === candidate.freguesiaSlug || claim.precision === "CONCELHO" || candidate.precision === "CONCELHO";
+    // «Segurança pública» é a categoria larga das detenções e apreensões: com títulos parecidos,
+    // é a mesma ocorrência que uma fonte classificou como furto ou violência doméstica.
+    const broad = (claim.category === "SEGURANCA_PUBLICA" || candidate.category === "SEGURANCA_PUBLICA") && similarity >= 0.2;
+    const kind = sameKind(claim.category, candidate.category) || broad;
     // Duas localidades diferentes na mesma freguesia são, em regra, duas ocorrências.
     const otherPlace = sameArea && claim.precision === "LOCALIDADE" && candidate.precision === "LOCALIDADE" && claim.placeName !== candidate.placeName;
     let result: { agreement: Agreement; reason: string } | null = null;

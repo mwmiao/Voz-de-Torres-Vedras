@@ -514,6 +514,39 @@ a {
   font-size: 0.875rem;
 }
 
+/* Painel do concelho: ocorrências que a fonte não situa em nenhuma freguesia. */
+.incident-concelho {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.5rem;
+  border: 2px dashed var(--color-record);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 0.4rem 0.75rem;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.incident-concelho[hidden] {
+  display: none;
+}
+
+.incident-concelho__count {
+  display: inline-flex;
+  min-width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-record);
+  color: #fff;
+}
+
 .incident-popup .status-badge {
   margin-bottom: 0.4rem;
 }

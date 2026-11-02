@@ -11,6 +11,8 @@ import { SOURCE_CATALOG } from "@/lib/source-catalog";
 import {
   BOUNDARIES_SOURCE,
   clampRange,
+  CONCELHO,
+  CONCELHO_NAME,
   INCIDENT_CATEGORIES,
   lisbonDay,
   METHOD_INTRO,
@@ -81,7 +83,8 @@ export function toPublicIncident(row: Row): PublicIncident {
     hasTime: row.hasTime,
     retrievalDate: row.retrievalDate.toISOString(),
     freguesiaSlug: row.freguesiaSlug,
-    freguesiaName: NAMES[row.freguesiaSlug] ?? row.freguesiaSlug,
+    freguesiaName: row.freguesiaSlug === CONCELHO ? CONCELHO_NAME : (NAMES[row.freguesiaSlug] ?? row.freguesiaSlug),
+    dateIsPublication: row.flags.split(",").includes("data-da-publicacao"),
     placeName: row.placeName,
     precision: row.precision,
     latitude: row.latitude,

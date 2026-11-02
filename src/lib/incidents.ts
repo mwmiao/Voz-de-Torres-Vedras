@@ -80,6 +80,7 @@ export const REVIEW_DEFAULTS = {
 };
 
 export const PRECISION_LABEL: Record<GeoPrecision, string> = {
+  CONCELHO: "Concelho",
   FREGUESIA: "Freguesia",
   LOCALIDADE: "Localidade",
   AREA_PUBLICA: "Área pública",
@@ -131,8 +132,15 @@ export const LOCALIDADES = [
   { name: "Carmões", patterns: ["carmoes"], freguesia: "carvoeira-carmoes", point: [39.0534, -9.138] },
 ] as const satisfies readonly { name: string; patterns: readonly string[]; freguesia: string; point: readonly [number, number] }[];
 
+/** Valor de freguesia para ocorrências que a fonte só situa no concelho. */
+export const CONCELHO = "concelho";
+export const CONCELHO_NAME = "Concelho de Torres Vedras";
+/** Ponto médio da área do concelho: só serve para ancorar o painel, nunca como marcador. */
+export const CONCELHO_POINT: [number, number] = [39.1049, -9.2604];
+
 /** Raio da zona mostrada para cada nível de precisão, em metros. */
 export const PRECISION_RADIUS_M: Record<GeoPrecision, number | null> = {
+  CONCELHO: null,
   FREGUESIA: null,
   LOCALIDADE: 900,
   AREA_PUBLICA: 400,
@@ -149,9 +157,10 @@ export function lisbonDay(date: Date): string {
 
 const shiftDay = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 
-/** Primeiro dia da janela: hoje conta como um dos 14 dias. */
-export const windowStartDay = (now: Date) => shiftDay(lisbonDay(now), -(WINDOW_DAYS - 1));
-export const windowStart = (now: Date) => new Date(now.getTime() - WINDOW_DAYS * DAY_MS);
+/** Primeiro dia da janela: até 14 dias antes de hoje, inclusive. A 2 de novembro, começa a 19 de outubro. */
+export const windowStartDay = (now: Date) => shiftDay(lisbonDay(now), -WINDOW_DAYS);
+/** Início da janela em UTC: meia-noite de Lisboa do primeiro dia, com uma hora de margem para a hora de verão. */
+export const windowStart = (now: Date) => new Date(Date.parse(`${windowStartDay(now)}T00:00:00Z`) - 3_600_000);
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -205,6 +214,8 @@ export type PublicIncident = {
   hasTime: boolean;
   publicationDate: string;
   retrievalDate: string;
+  /** A fonte não dá a data da ocorrência: é usada a data de publicação. */
+  dateIsPublication: boolean;
   freguesiaSlug: string;
   freguesiaName: string;
   placeName: string;
@@ -231,4 +242,12 @@ export function filterIncidents<T extends Filterable>(incidents: T[], filters: P
       (!filters.estado || item.verificationStatus === filters.estado) &&
       (!filters.range || isInRange(new Date(item.incidentStart), filters.range)),
   );
+}
+
+/** Mesmas regras que a página Segurança: não arquivada, não retida e dentro da janela. */
+export function visibilityProblem(incident: { archivedAt: Date | null; archiveReason: string | null; heldForReview: boolean; reviewReasons: string; incidentStart: Date }, at: Date): string | null {
+  if (incident.archivedAt) return `arquivada: ${incident.archiveReason ?? "sem motivo"}`;
+  if (incident.heldForReview) return `retida para revisão: ${incident.reviewReasons || "sem motivo"}`;
+  if (lisbonDay(incident.incidentStart) < windowStartDay(at)) return `fora da janela: ocorrência a ${lisbonDay(incident.incidentStart)}, janela desde ${windowStartDay(at)}`;
+  return null;
 }

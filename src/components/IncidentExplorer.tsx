@@ -50,7 +50,9 @@ function MapMessage({ children }: { children: React.ReactNode }) {
 
 const subscribeNothing = () => () => {};
 const PRESETS = [{ label: "Últimas duas semanas", days: WINDOW_DAYS }, { label: "Últimos 7 dias", days: 7 }, { label: "Últimos 3 dias", days: 3 }];
-const presetStart = (max: string, days: number) => new Date(Date.parse(`${max}T12:00:00Z`) - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+/** Primeiro dia de um período rápido. «Últimas duas semanas» é a janela inteira, que inclui o 14.º dia. */
+const presetStart = (bounds: { min: string; max: string }, days: number) =>
+  days === WINDOW_DAYS ? bounds.min : new Date(Date.parse(`${bounds.max}T12:00:00Z`) - (days - 1) * 86_400_000).toISOString().slice(0, 10);
 const plural = (count: number) => (count === 1 ? "1 ocorrência visível" : `${count} ocorrências visíveis`);
 
 export function StatusIcon({ status, className = "size-4" }: { status: VerificationStatus; className?: string }) {
@@ -80,7 +82,7 @@ export function IncidentExplorer({ incidents, freguesias, initial, bounds }: Pro
   const [focusRequest, setFocusRequest] = useState<{ id: string; seq: number } | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   // Datas que não correspondem a um período rápido abrem logo a escolha de datas.
-  const [initiallyCustom] = useState(() => initial.ate !== bounds.max || !PRESETS.some((preset) => presetStart(bounds.max, preset.days) === initial.de));
+  const [initiallyCustom] = useState(() => initial.ate !== bounds.max || !PRESETS.some((preset) => presetStart(bounds, preset.days) === initial.de));
 
   // O endereço acompanha os filtros, para se poder partilhar ou voltar atrás.
   useEffect(() => {
@@ -124,6 +126,11 @@ export function IncidentExplorer({ incidents, freguesias, initial, bounds }: Pro
   const areaName = selectedName ? `Freguesia de ${selectedName}` : "Todo o concelho";
   const changed = filters.area || filters.tipo || filters.estado || filters.fonte || range.from !== bounds.min || range.to !== bounds.max;
   const fullWindow = range.from === bounds.min && range.to === bounds.max;
+  // Ocorrências só com o concelho não pertencem a nenhuma freguesia: o filtro de área deixa-as de fora.
+  const concelhoOnly = useMemo(
+    () => (filters.area ? filterIncidents(incidents, { range, tipo: filters.tipo, estado: filters.estado, fonte: filters.fonte }).filter((item) => item.precision === "CONCELHO").length : 0),
+    [incidents, range, filters.area, filters.tipo, filters.estado, filters.fonte],
+  );
   const unconfirmedVisible = visible.filter((item) => item.verificationStatus === "NAO_CONFIRMADO" || item.verificationStatus === "EM_APURAMENTO").length;
 
   const showInList = (id: string) => {
@@ -184,7 +191,7 @@ export function IncidentExplorer({ incidents, freguesias, initial, bounds }: Pro
             <p id="periodo-rotulo" className="text-sm font-medium">Período <span className="font-normal text-muted">(máximo de {WINDOW_DAYS} dias)</span></p>
             <div role="group" aria-labelledby="periodo-rotulo" className="mt-1 flex flex-wrap gap-2">
               {PRESETS.map((preset) => {
-                const from = presetStart(bounds.max, preset.days);
+                const from = presetStart(bounds, preset.days);
                 const active = range.from === from && range.to === bounds.max;
                 return (
                   <button key={preset.days} type="button" aria-pressed={active} onClick={() => update({ de: from, ate: bounds.max })} className={`chip ${active ? "chip--active" : ""}`}>
@@ -235,6 +242,12 @@ export function IncidentExplorer({ incidents, freguesias, initial, bounds }: Pro
           </p>
         </div>
         {visible.length > 0 ? <a href="#lista-ocorrencias" className="text-sm underline">Saltar o mapa e ver a lista</a> : null}
+        {concelhoOnly > 0 ? (
+          <p className="w-full text-sm">
+            {concelhoOnly === 1 ? "1 ocorrência não tem freguesia indicada na fonte e só aparece" : `${concelhoOnly} ocorrências não têm freguesia indicada na fonte e só aparecem`} com «Todo o concelho».{" "}
+            <button type="button" className="underline" onClick={() => update({ area: "" })}>Ver todo o concelho</button>
+          </p>
+        ) : null}
       </div>
 
       <MapLegend />
@@ -316,8 +329,8 @@ function IncidentCard({ incident, highlighted, onShowOnMap }: { incident: Public
         <dt className="text-muted">Onde</dt>
         <dd>
           Localização aproximada: {incident.placeName}
-          {incident.precision !== "FREGUESIA" ? `, ${incident.freguesiaName}` : ""}{" "}
-          <span className="text-muted">({PRECISION_LABEL[incident.precision].toLowerCase()})</span>
+          {incident.precision !== "FREGUESIA" && incident.precision !== "CONCELHO" ? `, ${incident.freguesiaName}` : ""}{" "}
+          <span className="text-muted">({incident.precision === "CONCELHO" ? "a fonte não indica a freguesia" : PRECISION_LABEL[incident.precision].toLowerCase()})</span>
         </dd>
         <dt className="text-muted">Fonte</dt>
         <dd>
@@ -384,6 +397,10 @@ function MapLegend() {
           <span className="font-semibold">Localização aproximada</span>
         </li>
         <li className="flex items-center gap-2">
+          <span aria-hidden="true" className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded border-2 border-dashed border-record px-1 text-xs font-bold text-record">TV</span>
+          <span className="font-semibold">Concelho inteiro</span>
+        </li>
+        <li className="flex items-center gap-2">
           <svg aria-hidden="true" viewBox="0 0 16 16" className="size-6 shrink-0 text-record" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><rect x="2" y="3" width="12" height="11" rx="1.5" /><path d="M2 6.5h12M5 1.5v3M11 1.5v3" /></svg>
           <span className="font-semibold">Limite de {WINDOW_DAYS} dias</span>
         </li>
@@ -399,8 +416,10 @@ function MapLegend() {
           ))}
           <dt className="font-semibold">Localização aproximada</dt>
           <dd className="text-muted">Círculo tracejado em volta da localidade, ou a freguesia tracejada quando só a freguesia é conhecida. Nunca uma morada.</dd>
+          <dt className="font-semibold">Concelho inteiro</dt>
+          <dd className="text-muted">Botão no canto do mapa com as ocorrências que a fonte só situa no concelho, sem freguesia. Não têm marcador, para não sugerir um lugar.</dd>
           <dt className="font-semibold">Limite de {WINDOW_DAYS} dias</dt>
-          <dd className="text-muted">Só aparecem ocorrências das duas últimas semanas, pela data da ocorrência.</dd>
+          <dd className="text-muted">Só aparecem ocorrências das duas últimas semanas, até 14 dias antes de hoje, pela data da ocorrência. Sem data na fonte, conta a data da notícia.</dd>
         </dl>
       </details>
     </section>

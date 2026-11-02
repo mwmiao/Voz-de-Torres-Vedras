@@ -39,7 +39,9 @@ import {
 } from "../parsers/alertas";
 import {
   buildIncident,
+  concelhoPlace,
   firstSentence,
+  looksLikeIncident,
   freguesiaPlace,
   GNR_LIST,
   INCIDENT_HINT,
@@ -58,7 +60,7 @@ import { parseRssFeed } from "../parsers/noticias-rss";
 import { parseMastodonStatuses, parseTelegramChannel, type MastodonStatus, type SocialPost } from "../parsers/redes-sociais";
 import { CRIME_CATEGORIES, INE_SERIES, ineRows, ineUrl, parseCrimeYear, parsePopulation, type IneResponse } from "../parsers/ine";
 
-import { PRECISION_RADIUS_M, windowStart } from "@/lib/incidents";
+import { CONCELHO, PRECISION_RADIUS_M, windowStart } from "@/lib/incidents";
 import { searchKey } from "@/lib/search";
 
 export type CollectorInput = { http: PoliteHttp; db: PrismaClient; revision: string | null; now: Date };
@@ -412,17 +414,21 @@ export function newsFeedCollector(feed: NewsFeed): Collector {
   return async (input) => {
     const records: IngestRecord[] = [];
     const seen = new Set<string>();
+    const stats = { found: 0, considered: 0 };
+    // Lê o feed até sair da janela de 14 dias. Sem cache condicional: uma primeira página igual não diz
+    // nada sobre as seguintes. Os artigos não são abertos, e os já registados ficam inalterados.
     for (let page = 1; page <= feed.maxPages; page += 1) {
       const url = page === 1 ? feed.feedUrl : `${feed.feedUrl}?paged=${page}`;
-      const { body, notModified } = await input.http.text(url, { cache: true });
-      if (notModified) break;
+      const { body } = await input.http.text(url);
       if (page === 1) assertContains(body, /<rss[\s>]/, `feed de ${feed.sourceName}`);
       const items = parseRssFeed(body);
       for (const item of items) {
         if (seen.has(item.url) || !recent(item.published, input.now)) continue;
         seen.add(item.url);
+        stats.found += 1;
         const full = `${item.title} ${item.text}`;
-        if (!INCIDENT_HINT.test(searchKey(item.title)) || (!feed.concelhoImplied && !mentionsConcelho(full))) continue;
+        if (!looksLikeIncident(item.title, item.categories) || (!feed.concelhoImplied && !mentionsConcelho(full))) continue;
+        stats.considered += 1;
         records.push(buildIncident({
           url: item.url,
           title: item.title,
@@ -431,7 +437,8 @@ export function newsFeedCollector(feed: NewsFeed): Collector {
           sourceName: feed.sourceName,
           sourceTier: "IMPRENSA",
           author: item.author,
-          articleCategory: item.categories.join(", ") || null,
+          // No WordPress, a primeira categoria é a secção; as restantes são etiquetas.
+          articleCategory: item.categories[0] ?? null,
           concelhoImplied: feed.concelhoImplied,
           now: input.now,
         }));
@@ -439,7 +446,7 @@ export function newsFeedCollector(feed: NewsFeed): Collector {
       const oldest = items.at(-1)?.published;
       if (items.length === 0 || !recent(oldest ?? null, input.now)) break;
     }
-    return { records };
+    return { records, stats };
   };
 }
 
@@ -521,12 +528,18 @@ type CuratedIncident = {
   sourceTier?: SourceTier;
   account?: { platform: string; handle: string };
   author?: string;
+  /** Secção do artigo na fonte, como «Justiça». */
+  articleCategory?: string;
+  /** Título original: só serve para comparar com outras fontes, nunca é guardado nem mostrado. */
+  title?: string;
   publishedAt: string;
-  incidentStart: string;
+  /** Sem data na fonte, omita: fica a data de publicação. */
+  incidentStart?: string;
   incidentEnd?: string;
   hasTime?: boolean;
   category: IncidentCategory;
   tags?: string[];
+  /** Slug da freguesia, ou «concelho» quando a fonte só indica o concelho (só níveis 1 e 2). */
   freguesia: string;
   /** Nome de uma localidade conhecida ou de uma área pública nomeada por fonte fiável. */
   placeName?: string;
@@ -555,12 +568,13 @@ const collectCuratedIncidents: Collector = async () => {
       // Áreas públicas só com fonte oficial ou imprensa; em violência doméstica, fica sempre a freguesia.
       const tier = item.sourceTier ?? classifySourceTier(item.sourceUrl, item.account, config.contas);
       const allowCustom = item.category !== "VIOLENCIA_DOMESTICA" && (item.precision !== "AREA_PUBLICA" || tier === "OFICIAL" || tier === "IMPRENSA");
-      const base = (allowCustom && item.precision === "LOCALIDADE" && item.placeName ? localidadePlace(item.placeName) : null) ?? freguesiaPlace(item.freguesia);
+      const base = item.freguesia === CONCELHO ? concelhoPlace() : ((allowCustom && item.precision === "LOCALIDADE" && item.placeName ? localidadePlace(item.placeName) : null) ?? freguesiaPlace(item.freguesia));
       const custom = allowCustom && item.latitude !== undefined && item.longitude !== undefined && item.precision && item.precision !== "FREGUESIA" && item.precision !== "LOCALIDADE";
       const place = custom
         ? { freguesiaSlug: base?.freguesiaSlug ?? null, placeName: item.placeName ?? null, precision: item.precision!, latitude: item.latitude!, longitude: item.longitude!, radiusM: item.radiusM ?? PRECISION_RADIUS_M[item.precision!] }
         : { freguesiaSlug: base?.freguesiaSlug ?? null, placeName: base?.placeName ?? null, precision: base?.precision ?? null, latitude: base?.latitude ?? null, longitude: base?.longitude ?? null, radiusM: base?.radiusM ?? null };
-      const start = date(item.incidentStart);
+      // Sem data da ocorrência na fonte, fica a data de publicação, assinalada como tal.
+      const start = date(item.incidentStart) ?? date(item.publishedAt);
       const unofficialTier = tier === "CONTA_OFICIAL" || tier === "COMUNITARIA";
       const linkNote = !isArchivable(item.sourceUrl) ? "Ligação não publicada: a publicação não pode ser arquivada." : unofficialTier && item.personalData ? "Ligação não publicada: a publicação original contém dados pessoais." : null;
       const summary = place.placeName ? neutralSummary(item.category, { placeName: place.placeName, precision: place.precision ?? "FREGUESIA" }) : "";
@@ -571,6 +585,7 @@ const collectCuratedIncidents: Collector = async () => {
         sourceTier: tier,
         independenceKey: independenceKey(item.sourceUrl, item.author, item.account),
         author: item.author ?? null,
+        articleCategory: item.articleCategory ?? null,
         publishedAt: date(item.publishedAt),
         incidentStart: start,
         incidentEnd: date(item.incidentEnd),
@@ -579,11 +594,12 @@ const collectCuratedIncidents: Collector = async () => {
         tags: item.tags ?? [],
         summary,
         claim: place.placeName && start ? structuredClaim(item.category, { placeName: place.placeName }, start, item.agreement === "CONTRADIZ") : "",
-        titleFingerprint: titleFingerprint(`${item.category} ${place.placeName ?? ""}`),
-        textFingerprint: titleFingerprint(`${item.category} ${place.placeName ?? ""}`),
+        // O título só serve para a impressão digital: não é guardado.
+        titleFingerprint: titleFingerprint(item.title ?? `${item.category} ${place.placeName ?? ""}`),
+        textFingerprint: titleFingerprint(item.title ?? `${item.category} ${place.placeName ?? ""}`),
         phase: item.phase ?? null,
         denies: item.agreement === "CONTRADIZ",
-        flags: [],
+        flags: item.incidentStart ? [] : ["data-da-publicacao"],
         doubts: [],
         linkPublic: linkNote === null,
         linkNote,
@@ -600,8 +616,9 @@ const collectCuratedIncidents: Collector = async () => {
 export const COLLECTORS: Record<string, Collector> = {
   "gnr-comunicados": collectGnr,
   "noticias-ao-minuto": collectNoticiasAoMinuto,
-  "rtv-oeste": newsFeedCollector({ feedUrl: "https://www.rtvon.pt/feed/", sourceName: "RTV Oeste", maxPages: 3 }),
-  "onfm-torres-vedras": newsFeedCollector({ feedUrl: "https://onfm.pt/category/torres-vedras/feed/", sourceName: "ON FM", maxPages: 3, concelhoImplied: true }),
+  // A RTV Oeste publica cerca de dez artigos por dia: duas semanas são umas quinze páginas do feed.
+  "rtv-oeste": newsFeedCollector({ feedUrl: "https://www.rtvon.pt/feed/", sourceName: "RTV Oeste", maxPages: 20 }),
+  "onfm-torres-vedras": newsFeedCollector({ feedUrl: "https://onfm.pt/category/torres-vedras/feed/", sourceName: "ON FM", maxPages: 10, concelhoImplied: true }),
   "mastodon-torresvedras": collectMastodon,
   "telegram-canais": collectTelegram,
   "ocorrencias-curadas": collectCuratedIncidents,

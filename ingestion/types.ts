@@ -163,4 +163,7 @@ export class StructureError extends Error {
 }
 
 /** Resultado de uma recolha. `unchanged` indica que a origem não publicou nada de novo. */
-export type Collected = { unchanged: true } | { unchanged?: false; records: IngestRecord[]; revision?: string; complete?: boolean };
+/** Contagens de uma recolha, para o diagnóstico: itens lidos na origem e itens passados ao parser. */
+export type CollectStats = { found: number; considered: number };
+
+export type Collected = { unchanged: true } | { unchanged?: false; records: IngestRecord[]; revision?: string; complete?: boolean; stats?: CollectStats };

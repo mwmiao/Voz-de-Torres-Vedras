@@ -10,7 +10,7 @@ import { appendFileSync } from "node:fs";
 import { PrismaClient, type SourceRunStatus } from "@prisma/client";
 import { SOURCE_CATALOG, type SourceDefinition } from "@/lib/source-catalog";
 import { PoliteHttp } from "./fetchers/http";
-import { selectSources } from "./select";
+import { isDue, selectSources } from "./select";
 import { COLLECTORS } from "./sources";
 import type { CollectStats, IngestRecord } from "./types";
 import { deriveAll } from "./derive";
@@ -57,8 +57,7 @@ async function runSource(db: PrismaClient, http: PoliteHttp, source: SourceDefin
   const state = await db.dataSourceState.upsert({ where: { id: source.id }, update: {}, create: { id: source.id } });
   const now = new Date();
 
-  const dueAt = (state.lastSuccessAt?.getTime() ?? 0) + source.frequencyHours * 3_600_000;
-  if (!force && dueAt > now.getTime()) return { ...summary, status: "IGNORADA", message: "ainda dentro da frequência" };
+  if (!isDue(source, state, now, force)) return { ...summary, status: "IGNORADA", message: "ainda dentro da frequência" };
 
   const run = await db.importRun.create({
     data: { dataset: source.id, dataSourceId: source.id, sourceUrl: source.baseUrl, fileName: "-", sha256: "-", retrievedAt: now },
@@ -93,6 +92,7 @@ async function runSource(db: PrismaClient, http: PoliteHttp, source: SourceDefin
       data: {
         lastRunAt: now,
         lastSuccessAt: now,
+        configVersion: source.version ?? null,
         lastStatus: summary.status,
         lastError: summary.message ?? null,
         revision: collected.unchanged ? state.revision : (collected.revision ?? state.revision),

@@ -382,6 +382,8 @@ model DataSourceState {
   lastError     String?
   // Última revisão publicada pela origem, para não voltar a descarregar o que não mudou.
   revision      String?
+  // Versão do recolhedor na última recolha com sucesso: uma versão nova ignora a frequência.
+  configVersion Int?
   newCount      Int             @default(0)
   updatedCount  Int             @default(0)
   unchangedCount Int            @default(0)

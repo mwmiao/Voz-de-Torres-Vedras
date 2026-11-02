@@ -308,6 +308,18 @@ O mapa em `/seguranca` mostra só ocorrências dos últimos 14 dias, pela data d
 npm run review:incidents
 ```
 
+Para saber porque é que um artigo não aparece no mapa:
+
+```bash
+npm run diagnose:incidents
+```
+
+```bash
+npm run diagnose:incidents -- --url dois-mil-litros
+```
+
+O resumo mostra, por origem, a última recolha, os artigos lidos, os passados ao parser, os recusados com o motivo, os gravados e os visíveis no mapa. Com `--url`, mostra o percurso de um artigo: nunca chegou ao parser, foi recusado, ficou retido, foi arquivado, está fora da janela ou está no mapa.
+
 A decisão regista-se em `prisma/data/revisoes-ocorrencias.json` e aplica-se na recolha seguinte:
 
 ```json
@@ -315,6 +327,8 @@ A decisão regista-se em `prisma/data/revisoes-ocorrencias.json` e aplica-se na 
 ```
 
 `decision` pode ser `publicar` (sai da retenção), `manter` ou `arquivar`.
+
+**Localização e datas:** sem freguesia nem localidade, uma notícia de autoridade ou imprensa fica ao nível do concelho e aparece no painel «Concelho inteiro» do mapa, sem marcador. Fontes de nível 3 e 4 precisam de uma freguesia ou localidade. Um concelho vizinho só conta como lugar quando aparece como tal («na Lourinhã»), não no nome de uma instituição («Bombeiros Voluntários da Lourinhã»). Sem data da ocorrência, autoridades e imprensa ficam com a data de publicação, assinalada no cartão. A janela inclui o 14.º dia: a 2 de novembro, começa a 19 de outubro.
 
 **Privacidade:** nomes, idades, moradas, matrículas e contactos nunca são publicados. Os resumos e as afirmações são modelos neutros; o texto e o título originais não são guardados, só impressões das palavras. Em fontes de nível 3 e 4, a ligação não é publicada quando a publicação expõe dados pessoais ou não pode ser arquivada, como grupos fechados ou mensagens. Em violência doméstica fica sempre a freguesia. A localização é a freguesia, a localidade (raio de 900 m) ou uma área pública nomeada por fonte de nível 1 ou 2.
 
@@ -331,7 +345,7 @@ A decisão regista-se em `prisma/data/revisoes-ocorrencias.json` e aplica-se na 
 [{ "sourceUrl": "https://www.facebook.com/groups/.../posts/...", "sourceName": "Grupo comunitário no Facebook", "sourceTier": "COMUNITARIA", "account": { "platform": "facebook", "handle": "grupo" }, "publishedAt": "2026-11-02T10:00:00Z", "incidentStart": "2026-11-02T08:00:00Z", "category": "FURTO", "freguesia": "silveira", "precision": "LOCALIDADE", "placeName": "Santa Cruz", "personalData": false }]
 ```
 
-Para ligar uma fonte a uma ocorrência existente, indique `incidentKey` (URL da primeira fonte) e `agreement`. Para registar que a publicação foi apagada, `removed: true`.
+Use `"freguesia": "concelho"` quando a fonte só indica o concelho, e omita `incidentStart` quando não dá a data da ocorrência. O campo `title` só serve para comparar com outras fontes: não é guardado. Para ligar uma fonte a uma ocorrência existente, indique `incidentKey` (URL da primeira fonte) e `agreement`. Para registar que a publicação foi apagada, `removed: true`.
 
 A tabela `incident_logs` guarda os registos novos, atualizados, duplicados, recusados, arquivados e enviados para revisão, com o motivo. Os limites das freguesias estão em [public/geo/freguesias-torres-vedras.json](public/geo/freguesias-torres-vedras.json), simplificados a partir da CAOP 2025 da DGT. O mapa de fundo é do OpenStreetMap.
 

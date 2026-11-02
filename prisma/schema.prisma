@@ -635,6 +635,9 @@ model Alert {
 model DataUpdateLog {
   id                 String             @id @default(cuid())
   status             SourceRunStatus
+  // Itens lidos na origem e itens passados ao parser, quando a origem os conta (feeds e listas).
+  itemsFound         Int?
+  itemsConsidered    Int?
   newCount           Int                @default(0)
   updatedCount       Int                @default(0)
   unchangedCount     Int                @default(0)
@@ -695,6 +698,8 @@ enum IncidentPhase {
 }
 
 enum GeoPrecision {
+  // A fonte só indica o concelho: sem ponto próprio no mapa.
+  CONCELHO
   FREGUESIA
   LOCALIDADE
   AREA_PUBLICA

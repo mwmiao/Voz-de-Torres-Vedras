@@ -9,6 +9,7 @@ import { formatIncidentWhen, formatShortDate } from "@/lib/incident-format";
 import { STATUS_CLASS, statusSvg } from "@/lib/incident-status";
 import {
   BOUNDARIES_URL,
+  CONCELHO_POINT,
   CONFLICT_NOTE,
   INCIDENT_CATEGORY_LABEL,
   PRECISION_LABEL,
@@ -59,7 +60,8 @@ export function statusBreakdown(incidents: Pick<PublicIncident, "verificationSta
 
 function groupByPlace(incidents: PublicIncident[]): Place[] {
   const places = new Map<string, Place>();
-  for (const incident of incidents) {
+  // Só o concelho: sem marcador, para não sugerir um lugar. Aparecem no painel «Concelho inteiro».
+  for (const incident of incidents.filter((item) => item.precision !== "CONCELHO")) {
     const place = places.get(placeKey(incident)) ?? { key: placeKey(incident), latlng: L.latLng(incident.latitude, incident.longitude), byStatus: [], count: 0 };
     let group = place.byStatus.find((item) => item.key === groupKey(incident));
     if (!group) {
@@ -90,9 +92,12 @@ function cluster(map: L.Map, places: Place[]): Place[][] {
 function popupHtml(group: Group, selectedId: string | null): string {
   const first = group.incidents[0];
   const status = first.verificationStatus;
+  const mixed = group.incidents.some((incident) => incident.verificationStatus !== status);
+  const concelho = first.precision === "CONCELHO";
   const items = group.incidents
     .map((incident) => `
       <li class="incident-popup__item${incident.id === selectedId ? " is-selected" : ""}">
+        ${mixed ? `<p class="status-badge ${STATUS_CLASS[incident.verificationStatus]}">${statusSvg(incident.verificationStatus)}Estado: ${escape(VERIFICATION_LABEL[incident.verificationStatus])}</p>` : ""}
         <p class="incident-popup__type">${escape(INCIDENT_CATEGORY_LABEL[incident.category])}</p>
         <p class="incident-popup__meta">${escape(formatIncidentWhen(incident))}</p>
         <p>${escape(incident.summary)}</p>
@@ -109,9 +114,9 @@ function popupHtml(group: Group, selectedId: string | null): string {
     .join("");
   return `
     <div class="incident-popup">
-      <p class="status-badge ${STATUS_CLASS[status]}">${statusSvg(status)}Estado: ${escape(VERIFICATION_LABEL[status])}</p>
+      ${mixed ? "" : `<p class="status-badge ${STATUS_CLASS[status]}">${statusSvg(status)}Estado: ${escape(VERIFICATION_LABEL[status])}</p>`}
       <h3 class="incident-popup__title" tabindex="-1">${escape(first.placeName)}</h3>
-      <p class="incident-popup__meta">${escape(plural(group.incidents.length))} · Localização aproximada (${escape(PRECISION_LABEL[first.precision].toLowerCase())})</p>
+      <p class="incident-popup__meta">${escape(plural(group.incidents.length))} · ${concelho ? "Localização aproximada (concelho): a fonte não indica a freguesia" : `Localização aproximada (${escape(PRECISION_LABEL[first.precision].toLowerCase())})`}</p>
       <ul>${items}</ul>
     </div>`;
 }
@@ -135,6 +140,8 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
   const markers = useRef<L.LayerGroup | null>(null);
   const zones = useRef<L.LayerGroup | null>(null);
   const markerByGroup = useRef(new Map<string, L.Marker>());
+  const concelhoButton = useRef<HTMLButtonElement | null>(null);
+  const concelhoOpen = useRef(false);
   const callbacks = useRef({ onShowInList, onFreguesia, onError });
   const state = useRef({ incidents, freguesia, selectedId: focusRequest?.id ?? null });
   callbacks.current = { onShowInList, onFreguesia, onError };
@@ -160,6 +167,18 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
     }).addTo(instance);
     instance.fitBounds(BOUNDS);
     zones.current = L.layerGroup().addTo(instance);
+    // Painel para as ocorrências que a fonte só situa no concelho: realça o concelho inteiro.
+    const control = new L.Control({ position: "bottomleft" });
+    control.onAdd = () => {
+      const button = L.DomUtil.create("button", "incident-concelho");
+      button.type = "button";
+      button.hidden = true;
+      L.DomEvent.disableClickPropagation(button);
+      L.DomEvent.on(button, "click", () => openConcelho());
+      concelhoButton.current = button;
+      return button;
+    };
+    control.addTo(instance);
     markers.current = L.layerGroup().addTo(instance);
     map.current = instance;
 
@@ -191,6 +210,12 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
       });
 
     instance.on("zoomend", () => drawMarkers());
+    instance.on("popupclose", () => {
+      if (!concelhoOpen.current) return;
+      concelhoOpen.current = false;
+      styleBoundaries();
+      concelhoButton.current?.focus({ preventScroll: true });
+    });
     instance.on("popupopen", (event) => {
       const element = event.popup.getElement();
       element?.querySelectorAll<HTMLButtonElement>("[data-incident]").forEach((button) => {
@@ -229,9 +254,37 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
     });
   }
 
+  function concelhoIncidents() {
+    return state.current.incidents.filter((item) => item.precision === "CONCELHO");
+  }
+
+  function openConcelho() {
+    const instance = map.current;
+    const items = concelhoIncidents();
+    if (!instance || items.length === 0) return;
+    instance.fitBounds(boundaries.current?.getBounds() ?? BOUNDS, { padding: [12, 12] });
+    boundaries.current?.eachLayer((layer) => (layer as L.Path).setStyle({ weight: 2.5, opacity: 1, dashArray: "6 4", fillOpacity: 0.12, fillColor: INK }));
+    L.popup({ maxWidth: 320, minWidth: 240, autoPanPadding: L.point(24, 24) })
+      .setLatLng(CONCELHO_POINT)
+      .setContent(popupHtml({ key: "concelho", latlng: L.latLng(CONCELHO_POINT), incidents: items }, state.current.selectedId))
+      .openOn(instance);
+    concelhoOpen.current = true;
+  }
+
+  function drawConcelhoButton() {
+    const button = concelhoButton.current;
+    if (!button) return;
+    const items = concelhoIncidents();
+    button.hidden = items.length === 0;
+    const text = `Concelho inteiro: ${plural(items.length)} sem freguesia indicada`;
+    button.innerHTML = `<span aria-hidden="true" class="incident-concelho__count">${items.length}</span> ${escape(text)}`;
+    button.setAttribute("aria-label", `${text} (${statusBreakdown(items)}). Abrir detalhes`);
+  }
+
   function drawMarkers() {
     const instance = map.current;
     if (!instance || !markers.current || !zones.current) return;
+    drawConcelhoButton();
     markers.current.clearLayers();
     zones.current.clearLayers();
     markerByGroup.current.clear();
@@ -304,6 +357,10 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
     if (!instance || !focusRequest) return;
     const incident = state.current.incidents.find((item) => item.id === focusRequest.id);
     if (!incident) return;
+    if (incident.precision === "CONCELHO") {
+      openConcelho();
+      return;
+    }
     const key = groupKey(incident);
     const open = () => {
       const marker = markerByGroup.current.get(key);
@@ -317,6 +374,8 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
       instance.once("zoomend", open);
       instance.setView([incident.latitude, incident.longitude], 14);
     }
+    // As funções de desenho leem sempre o estado atual através de refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequest]);
 
   return (

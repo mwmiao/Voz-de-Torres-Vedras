@@ -112,8 +112,9 @@ describe("construção do registo", () => {
   });
 
   it("recusa registos sem data, sem área ou fora do concelho", () => {
-    expect(article("Furto em Runa", "Furto em Runa, Torres Vedras.")).toMatchObject({ kind: "incident-rejected", reason: "sem data da ocorrência" });
-    expect(article("Furto em Torres Vedras", "Furto ontem no concelho de Torres Vedras.")).toMatchObject({ reason: expect.stringMatching(/só indica o concelho/) });
+    const social = { sourceTier: "COMUNITARIA" as const, url: "https://www.facebook.com/x/posts/1" };
+    expect(article("Furto em Runa", "Furto em Runa, Torres Vedras.", social)).toMatchObject({ kind: "incident-rejected", reason: "sem data da ocorrência" });
+    expect(article("Furto em Torres Vedras", "Furto ontem no concelho de Torres Vedras.", social)).toMatchObject({ reason: expect.stringMatching(/só indica o concelho/) });
     expect(article("Furto na Maceira", "Furto ontem na Maceira, em Leiria.")).toMatchObject({ reason: "não refere o concelho de Torres Vedras" });
     expect(article("Furto em Runa", "Furto em Runa, Torres Vedras.", { published: null })).toMatchObject({ reason: "sem data de publicação" });
   });
@@ -311,10 +312,10 @@ describe("redes sociais", () => {
 
 describe("janela de 14 dias", () => {
   it("limita as datas escolhidas aos últimos 14 dias", () => {
-    expect(clampRange(now)).toEqual({ from: "2026-10-20", to: "2026-11-02", min: "2026-10-20", max: "2026-11-02" });
-    expect(clampRange(now, "2026-01-01", "2027-01-01")).toMatchObject({ from: "2026-10-20", to: "2026-11-02" });
+    expect(clampRange(now)).toEqual({ from: "2026-10-19", to: "2026-11-02", min: "2026-10-19", max: "2026-11-02" });
+    expect(clampRange(now, "2026-01-01", "2027-01-01")).toMatchObject({ from: "2026-10-19", to: "2026-11-02" });
     expect(clampRange(now, "2026-11-01", "2026-10-25")).toMatchObject({ from: "2026-10-25", to: "2026-11-01" });
-    expect(clampRange(now, "lixo")).toMatchObject({ from: "2026-10-20" });
+    expect(clampRange(now, "lixo")).toMatchObject({ from: "2026-10-19" });
   });
 
   it("usa o dia civil de Lisboa", () => {

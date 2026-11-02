@@ -1,4 +1,4 @@
-import { FREGUESIA_POINTS } from "@/lib/incidents";
+import { CONCELHO, FREGUESIA_POINTS } from "@/lib/incidents";
 import { isOfficialUrl } from "@/lib/sources";
 import { StructureError, type IngestRecord } from "../types";
 
@@ -70,7 +70,9 @@ export function validateRecord(record: IngestRecord): string[] {
       need(record.sourceName, "sourceName");
       need(record.publishedAt && !Number.isNaN(record.publishedAt.getTime()), "publishedAt");
       need(record.incidentStart && !Number.isNaN(record.incidentStart.getTime()), "incidentStart");
-      need(record.freguesiaSlug && FREGUESIA_POINTS[record.freguesiaSlug], "freguesiaSlug");
+      need(record.freguesiaSlug && (FREGUESIA_POINTS[record.freguesiaSlug] || (record.freguesiaSlug === CONCELHO && record.precision === "CONCELHO")), "freguesiaSlug");
+      // Só o concelho, apenas com autoridades ou imprensa.
+      need(record.precision !== "CONCELHO" || record.sourceTier === "OFICIAL" || record.sourceTier === "IMPRENSA", "precision");
       need(record.placeName && record.precision, "placeName");
       // O ponto tem de cair dentro do concelho.
       need(record.latitude !== null && record.latitude > 38.98 && record.latitude < 39.25, "latitude");

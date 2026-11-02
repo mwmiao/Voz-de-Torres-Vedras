@@ -12,14 +12,14 @@ import { SOURCE_CATALOG, type SourceDefinition } from "@/lib/source-catalog";
 import { PoliteHttp } from "./fetchers/http";
 import { selectSources } from "./select";
 import { COLLECTORS } from "./sources";
-import type { IngestRecord } from "./types";
+import type { CollectStats, IngestRecord } from "./types";
 import { deriveAll } from "./derive";
 import { applyRecord, retireMissingOfficials, type ApplyContext } from "./updaters/apply";
 import { closeMissingAlerts } from "./updaters/civic";
 import { logIncident, reconcileIncidents } from "./updaters/incidents";
 import { validateRecord } from "./validators";
 
-type Summary = { id: string; status: SourceRunStatus | "IGNORADA"; created: number; updated: number; unchanged: number; failed: number; message?: string };
+type Summary = { id: string; status: SourceRunStatus | "IGNORADA"; created: number; updated: number; unchanged: number; failed: number; message?: string; stats?: CollectStats };
 
 function readArgs(argv: string[]) {
   const only: string[] = [];
@@ -70,6 +70,7 @@ async function runSource(db: PrismaClient, http: PoliteHttp, source: SourceDefin
     await db.contract.updateMany({ where: { dataSourceId: source.id, updateStatus: { not: "UNCHANGED" } }, data: { updateStatus: "UNCHANGED" } });
 
     const collected = await collect({ http, db, revision: state.revision, now });
+    if (!collected.unchanged) summary.stats = collected.stats;
     const errors = collected.unchanged ? [] : await applyAll(context, collected.records, summary);
 
     if (!collected.unchanged && collected.complete && source.id === "cm-composicao") {
@@ -118,6 +119,8 @@ async function runSource(db: PrismaClient, http: PoliteHttp, source: SourceDefin
       updatedCount: summary.updated,
       unchangedCount: summary.unchanged,
       failedCount: summary.failed,
+      itemsFound: summary.stats?.found,
+      itemsConsidered: summary.stats?.considered,
       message: summary.message,
       sourceId: source.id,
       sourceUrl: source.baseUrl,

@@ -11,10 +11,16 @@ export type SourceDefinition = {
   baseUrl: string;
   method: FetchMethod;
   frequencyHours: number;
-  /** Avisos urgentes, consultados com mais frequência do que o resto. */
-  group?: "alertas";
+  /** Avisos urgentes e ocorrências recentes, consultados com mais frequência do que o resto. */
+  group?: "alertas" | "ocorrencias";
   /** Falso quando não há forma legítima e fiável de recolher automaticamente. */
   enabled: boolean;
+  /** Nível da fonte nas ocorrências: 1 autoridade, 2 imprensa, 3 conta oficial, 4 comunitária. */
+  tier?: 1 | 2 | 3 | 4;
+  /** Área geográfica que a fonte cobre. */
+  coverage?: string;
+  /** Sem recolha automática, a fonte entra só por registo à mão em ocorrencias-curadas. */
+  manualOnly?: boolean;
   description: string;
   /** Regras aplicadas ao validar os registos. */
   validation: string;
@@ -242,6 +248,184 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     access: "Não é recolhida automaticamente.",
   },
   {
+    id: "gnr-comunicados",
+    tier: 1,
+    coverage: "Nacional, filtrado para Torres Vedras",
+    name: "GNR: comunicados de imprensa",
+    baseUrl: "https://www.gnr.pt/comunicados.aspx",
+    method: "SCRAPER",
+    frequencyHours: 12,
+    group: "ocorrencias",
+    enabled: true,
+    description: "Comunicados nacionais da GNR das duas últimas semanas que referem o concelho de Torres Vedras.",
+    validation: "Exige data de publicação, data da ocorrência e uma freguesia ou localidade do concelho. Comunicados que referem vários concelhos ficam por verificar.",
+    access: "Sem API. Só a primeira página pública de comunicados e os comunicados recentes; o servidor não publica robots.txt.",
+  },
+  {
+    id: "noticias-ao-minuto",
+    tier: 2,
+    coverage: "Nacional, filtrado para Torres Vedras",
+    name: "Notícias ao Minuto: secção País",
+    baseUrl: "https://www.noticiasaominuto.com/sitemap.xml",
+    method: "SCRAPER",
+    // O sitemap só mostra as últimas horas de notícias.
+    frequencyHours: 3,
+    group: "ocorrencias",
+    enabled: true,
+    description: "Notícias da secção País, muitas da agência Lusa, sobre ocorrências no concelho de Torres Vedras.",
+    validation: "Só abre artigos com indícios de ocorrência no título. Exige data, freguesia ou localidade e a menção ao concelho.",
+    access: "Lê o sitemap de notícias e os artigos, que o robots.txt permite. Os feeds RSS estão excluídos e não são usados.",
+  },
+  {
+    id: "ocorrencias-curadas",
+    coverage: "Concelho de Torres Vedras",
+    name: "Ocorrências verificadas à mão",
+    baseUrl: "https://www.gnr.pt/comunicados.aspx",
+    method: "TRANSCRICAO",
+    frequencyHours: 1,
+    group: "ocorrencias",
+    enabled: true,
+    description: "Ocorrências e publicações registadas por uma pessoa, em prisma/data/ocorrencias-curadas.json: notícias de sites sem recolha automática e publicações de Facebook, Instagram ou X.",
+    validation: "Cada registo exige ligação direta, datas, categoria e área. O nível da fonte decide o estado; publicações com dados pessoais ficam sem ligação pública.",
+    access: "Não é recolhida automaticamente.",
+  },
+  {
+    id: "rtv-oeste",
+    name: "RTV Oeste",
+    baseUrl: "https://www.rtvon.pt/feed/",
+    method: "API",
+    frequencyHours: 3,
+    group: "ocorrencias",
+    enabled: true,
+    tier: 2,
+    coverage: "Torres Vedras e região Oeste",
+    description: "Televisão e site regional: notícias locais, decisões municipais, segurança pública, proteção civil e mobilidade no Oeste.",
+    validation: "Só artigos com indícios de ocorrência no título e menção ao concelho. Entram como «Reportado», ou «Em apuramento» se a situação estiver em curso.",
+    access: "Feed RSS público do site (WordPress), que o robots.txt permite. Pedidos condicionais e até três páginas do feed.",
+  },
+  {
+    id: "onfm-torres-vedras",
+    name: "ON FM: Torres Vedras",
+    baseUrl: "https://onfm.pt/category/torres-vedras/feed/",
+    method: "API",
+    frequencyHours: 3,
+    group: "ocorrencias",
+    enabled: true,
+    tier: 2,
+    coverage: "Concelho de Torres Vedras",
+    description: "Rádio local: notícias de Torres Vedras, avisos municipais, obras na estrada, proteção civil e segurança. Também republica comunicados da Câmara, com a autoria preservada.",
+    validation: "Como na RTV Oeste. Comunicados da Câmara republicados contam como fonte da Câmara, não como uma redação independente.",
+    access: "Feed RSS público da categoria Torres Vedras, que o robots.txt permite.",
+  },
+  {
+    id: "jn-torres-vedras",
+    name: "Jornal de Notícias: Torres Vedras",
+    baseUrl: "https://www.jn.pt/topico/torres-vedras",
+    method: "SCRAPER",
+    frequencyHours: 12,
+    group: "ocorrencias",
+    enabled: false,
+    manualOnly: true,
+    tier: 2,
+    coverage: "Nacional, com tópico sobre Torres Vedras",
+    description: "Cobertura nacional sobre Torres Vedras. Fonte secundária: para pormenores locais prevalecem as fontes locais.",
+    validation: "Registos à mão, com o nível 2.",
+    access: "O robots.txt proíbe expressamente o uso de crawlers e outros métodos automáticos sem licença.",
+    disabledReason: "O jornal proíbe a recolha automática sem licença. Artigos relevantes podem ser registados à mão em ocorrencias-curadas.",
+  },
+  {
+    id: "mastodon-torresvedras",
+    tier: 4,
+    coverage: "Etiquetas sobre Torres Vedras",
+    name: "Mastodon: etiquetas de Torres Vedras",
+    baseUrl: "https://masto.pt/api/v1/timelines/tag/torresvedras",
+    method: "API",
+    frequencyHours: 3,
+    group: "ocorrencias",
+    enabled: true,
+    description: "Publicações públicas com as etiquetas configuradas em prisma/data/fontes-comunitarias.json. Fonte de nível 4, ou 3 para contas oficiais registadas.",
+    validation: "Só publicações públicas com indícios de ocorrência e menção ao concelho. Entram como «Em apuramento» ou «Não confirmado»; publicações apagadas são arquivadas.",
+    access: "API pública da instância, sem chave, a respeitar o robots.txt.",
+  },
+  {
+    id: "telegram-canais",
+    tier: 4,
+    coverage: "Canais configurados",
+    name: "Telegram: canais públicos",
+    baseUrl: "https://t.me/s/",
+    method: "SCRAPER",
+    frequencyHours: 3,
+    group: "ocorrencias",
+    enabled: true,
+    description: "Pré-visualização pública dos canais listados em prisma/data/fontes-comunitarias.json. Sem canais configurados, não faz pedidos.",
+    validation: "Como no Mastodon. Partilhas de outros canais contam como o canal de origem.",
+    access: "Páginas públicas t.me/s/, sem robots.txt publicado.",
+  },
+  {
+    id: "redes-sociais-automaticas",
+    tier: 4,
+    coverage: "Grupos e páginas locais",
+    manualOnly: true,
+    name: "Facebook, Instagram e X: recolha automática",
+    baseUrl: "https://www.facebook.com/",
+    method: "SCRAPER",
+    frequencyHours: 3,
+    group: "ocorrencias",
+    enabled: false,
+    description: "Grupos locais, páginas comunitárias e contas em redes sociais fechadas.",
+    validation: "Por definir.",
+    access: "Exigem sessão iniciada e os termos de utilização proíbem a recolha automática.",
+    disabledReason: "Sem acesso automático permitido. Publicações relevantes podem ser registadas à mão em ocorrencias-curadas, com o nível 3 ou 4.",
+  },
+  {
+    id: "badaladas",
+    tier: 2,
+    coverage: "Concelho de Torres Vedras",
+    manualOnly: true,
+    name: "Badaladas: notícias locais",
+    baseUrl: "https://www.badaladas.pt/",
+    method: "SCRAPER",
+    frequencyHours: 12,
+    group: "ocorrencias",
+    enabled: false,
+    description: "Semanário de Torres Vedras.",
+    validation: "Por definir.",
+    access: "O robots.txt proíbe expressamente a navegação automática sem licença.",
+    disabledReason: "O jornal proíbe a recolha automática sem licença. As notícias relevantes podem ser registadas à mão, com ligação, em ocorrencias-curadas.",
+  },
+  {
+    id: "psp-comunicados",
+    tier: 1,
+    coverage: "Nacional",
+    manualOnly: true,
+    name: "PSP: comunicados",
+    baseUrl: "https://www.psp.pt/",
+    method: "SCRAPER",
+    frequencyHours: 12,
+    group: "ocorrencias",
+    enabled: false,
+    description: "Comunicados da Polícia de Segurança Pública.",
+    validation: "Por definir.",
+    access: "As páginas de notícias recusam pedidos automáticos.",
+    disabledReason: "O servidor rejeita os pedidos às páginas de notícias. Os comunicados relevantes podem ser registados à mão.",
+  },
+  {
+    id: "anepc-ocorrencias",
+    tier: 1,
+    coverage: "Nacional",
+    manualOnly: true,
+    name: "ANEPC: ocorrências em curso",
+    baseUrl: "https://prociv.gov.pt/pt/",
+    method: "API",
+    frequencyHours: 1,
+    group: "ocorrencias",
+    enabled: false,
+    description: "Ocorrências de proteção e socorro registadas pela Autoridade Nacional de Emergência e Proteção Civil.",
+    validation: "Por definir.",
+    access: "O pedido ao robots.txt é rejeitado. Os agregadores não oficiais que republicam estes dados não são usados como fonte.",
+    disabledReason: "Sem acesso oficial confirmado. Agregadores não oficiais não servem de fonte primária.",
+  },
+  {
     id: "anepc-avisos",
     name: "ANEPC: avisos à população",
     baseUrl: "https://prociv.gov.pt/pt/avisos-a-populacao/",
@@ -279,3 +463,22 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     access: "Não é recolhida automaticamente.",
   },
 ];
+
+export type SourceStatus = "ATIVA" | "DESATIVADA" | "SO_MANUAL";
+
+export const SOURCE_STATUS_LABEL: Record<SourceStatus, string> = { ATIVA: "Ativa", DESATIVADA: "Desativada", SO_MANUAL: "Só manual" };
+
+/** Ativa: recolha automática. Só manual: entra por registo à mão. Desativada: não entra. */
+export function sourceStatus(source: Pick<SourceDefinition, "enabled" | "manualOnly" | "method">): SourceStatus {
+  if (source.enabled && !source.manualOnly && source.method !== "TRANSCRICAO") return "ATIVA";
+  if (source.manualOnly || source.method === "TRANSCRICAO") return "SO_MANUAL";
+  return "DESATIVADA";
+}
+
+export function frequencyLabel(source: Pick<SourceDefinition, "enabled" | "frequencyHours" | "method" | "manualOnly">): string {
+  if (!source.enabled || source.manualOnly) return "Sem recolha automática";
+  if (source.method === "TRANSCRICAO") return "Lido em cada recolha";
+  if (source.frequencyHours === 24) return "Diária";
+  if (source.frequencyHours === 168) return "Semanal";
+  return source.frequencyHours === 1 ? "De hora a hora" : `A cada ${source.frequencyHours} horas`;
+}

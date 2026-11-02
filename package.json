@@ -22,6 +22,7 @@
     "fetch:dataset": "tsx scripts/fetch-dataset.ts",
     "update:data": "tsx ingestion/run.ts",
     "update:alerts": "tsx ingestion/run.ts --alertas",
+    "review:incidents": "tsx scripts/review-incidents.ts",
     "data:bootstrap": "tsx scripts/data.ts bootstrap",
     "data:export": "tsx scripts/data.ts export",
     "data:load": "tsx scripts/data.ts load",
@@ -36,6 +37,7 @@
     "cheerio": "^1.2.0",
     "csv-parse": "^6.1.0",
     "fflate": "^0.8.3",
+    "leaflet": "^1.9.4",
     "next": "16.4.3",
     "prisma": "6.19.3",
     "react": "^19.2.0",
@@ -47,6 +49,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.1.16",
+    "@types/leaflet": "^1.9.20",
     "@types/node": "^22.18.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",

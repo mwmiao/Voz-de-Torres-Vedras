@@ -38,6 +38,18 @@ export function isOfficialUrl(url: string, type?: SourceType): boolean {
   return type === "VIDEO" && OFFICIAL_VIDEO_HOSTS.some((domain) => hostMatches(host, domain));
 }
 
+/** Redes sociais e mensagens: nunca aceites como fonte de uma ocorrência. */
+const SOCIAL_HOSTS = ["facebook.com", "fb.com", "fb.watch", "instagram.com", "x.com", "twitter.com", "t.co", "t.me", "telegram.me", "telegram.org", "whatsapp.com", "wa.me", "tiktok.com", "threads.net", "reddit.com", "youtube.com", "youtu.be"];
+
+export function isSocialMediaUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return SOCIAL_HOSTS.some((domain) => hostMatches(host, domain));
+  } catch {
+    return true;
+  }
+}
+
 type SourceLike = { official: boolean };
 
 /** Uma afirmação só é apresentada como facto com, pelo menos, uma fonte oficial. */

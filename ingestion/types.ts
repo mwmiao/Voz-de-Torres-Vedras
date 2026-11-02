@@ -1,4 +1,17 @@
-import type { AlertSeverity, AlertType, Body, BudgetKind, GeographicAreaType, SourceType, UpdateCategory } from "@prisma/client";
+import type {
+  Agreement,
+  AlertSeverity,
+  AlertType,
+  Body,
+  BudgetKind,
+  GeographicAreaType,
+  GeoPrecision,
+  IncidentCategory,
+  IncidentPhase,
+  SourceTier,
+  SourceType,
+  UpdateCategory,
+} from "@prisma/client";
 import type { NormalizedContract } from "@/lib/import/base";
 
 export type DocumentRecord = {
@@ -85,7 +98,62 @@ export type CrimeRecordInput = {
 
 export type PopulationRecord = { kind: "population"; year: number; population: number; sourceUrl: string; publishedAt: Date | null };
 
-export type IngestRecord = DocumentRecord | ContractRecord | ModificationRecord | MeetingRecord | OfficialRecord | FinanceRecord | AlertRecord | CrimeRecordInput | PopulationRecord;
+export type IncidentRecord = {
+  kind: "incident";
+  /** URL canónico da notícia, comunicado ou publicação. */
+  sourceUrl: string;
+  sourceName: string;
+  sourceTier: SourceTier;
+  independenceKey: string;
+  author: string | null;
+  articleCategory?: string | null;
+  publishedAt: Date | null;
+  incidentStart: Date | null;
+  incidentEnd: Date | null;
+  hasTime: boolean;
+  category: IncidentCategory;
+  tags: string[];
+  summary: string;
+  /** Afirmação estruturada, sem texto original. */
+  claim: string;
+  titleFingerprint: string;
+  textFingerprint: string;
+  phase: IncidentPhase | null;
+  denies: boolean;
+  flags: string[];
+  /** Dúvidas que impedem a publicação até revisão, como várias freguesias. */
+  doubts: string[];
+  linkPublic: boolean;
+  linkNote: string | null;
+  engagement: number;
+  /** A publicação original foi apagada. */
+  removed: boolean;
+  /** Ligação explícita a uma ocorrência existente, nos registos à mão. */
+  incidentKey?: string;
+  agreement?: Agreement;
+  freguesiaSlug: string | null;
+  placeName: string | null;
+  precision: GeoPrecision | null;
+  latitude: number | null;
+  longitude: number | null;
+  radiusM: number | null;
+};
+
+/** Artigo lido e recusado: fica só no registo de auditoria. */
+export type IncidentRejection = { kind: "incident-rejected"; sourceUrl: string; reason: string };
+
+export type IngestRecord =
+  | DocumentRecord
+  | ContractRecord
+  | ModificationRecord
+  | MeetingRecord
+  | OfficialRecord
+  | FinanceRecord
+  | AlertRecord
+  | CrimeRecordInput
+  | PopulationRecord
+  | IncidentRecord
+  | IncidentRejection;
 
 export class StructureError extends Error {
   constructor(message: string) {

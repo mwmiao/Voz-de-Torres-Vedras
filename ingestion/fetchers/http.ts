@@ -18,6 +18,15 @@ type FetchOptions = {
 
 export type TextResult = { body: string; hash: string; notModified: boolean };
 
+/** Alguns sites antigos anunciam UTF-8 mas enviam Windows-1252: sem isto, os acentos perdem-se. */
+export function decodeBody(bytes: ArrayBuffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
 export function sha256(content: string | Uint8Array): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -111,7 +120,7 @@ export class PoliteHttp {
     const response = await this.request(url, options);
     const previous = this.cache[url];
     if (response.status === 304 && previous) return { body: "", hash: previous.hash, notModified: true };
-    const body = await response.text();
+    const body = decodeBody(await response.arrayBuffer());
     const hash = sha256(body);
     const notModified = Boolean(options.cache && previous?.hash === hash);
     if (options.cache) {

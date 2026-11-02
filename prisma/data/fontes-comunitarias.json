@@ -1,0 +1,11 @@
+{
+  "contas": [],
+  "mastodon": {
+    "instancia": "https://masto.pt",
+    "etiquetas": [
+      "torresvedras",
+      "TorresVedras"
+    ]
+  },
+  "telegram": []
+}

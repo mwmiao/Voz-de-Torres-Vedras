@@ -21,6 +21,8 @@ import {
   parseGestao,
   parseRegulamentos,
 } from "../parsers/camara";
+import type { Agreement, GeoPrecision, IncidentCategory, IncidentPhase, SourceTier } from "@prisma/client";
+import { classifySourceTier, independenceKey, isArchivable, type AccountEntry } from "@/lib/source-tiers";
 import { StructureError, type AlertRecord, type Collected, type IngestRecord } from "../types";
 import { assertContains, assertMinimum } from "../validators";
 import {
@@ -35,7 +37,29 @@ import {
   SMAS,
   type IpmaWarning,
 } from "../parsers/alertas";
+import {
+  buildIncident,
+  firstSentence,
+  freguesiaPlace,
+  GNR_LIST,
+  INCIDENT_HINT,
+  localidadePlace,
+  mentionsConcelho,
+  NAM_SITEMAP,
+  parseGnrDetail,
+  parseGnrList,
+  parseNamArticle,
+  neutralSummary,
+  parseNewsSitemap,
+  structuredClaim,
+  titleFingerprint,
+} from "../parsers/ocorrencias";
+import { parseRssFeed } from "../parsers/noticias-rss";
+import { parseMastodonStatuses, parseTelegramChannel, type MastodonStatus, type SocialPost } from "../parsers/redes-sociais";
 import { CRIME_CATEGORIES, INE_SERIES, ineRows, ineUrl, parseCrimeYear, parsePopulation, type IneResponse } from "../parsers/ine";
+
+import { PRECISION_RADIUS_M, windowStart } from "@/lib/incidents";
+import { searchKey } from "@/lib/search";
 
 export type CollectorInput = { http: PoliteHttp; db: PrismaClient; revision: string | null; now: Date };
 export type Collector = (input: CollectorInput) => Promise<Collected>;
@@ -338,7 +362,249 @@ const collectCurated: Collector = async ({ now }) => {
   };
 };
 
+// ---------- Ocorrências recentes ----------
+
+/** Só se lê o que pode ainda entrar no mapa: um dia de margem para notícias publicadas mais tarde. */
+const recent = (date: Date | null, now: Date) => date !== null && date.getTime() >= windowStart(now).getTime() - 86_400_000;
+
+const collectGnr: Collector = async (input) => {
+  const { body } = await input.http.text(GNR_LIST);
+  const list = assertMinimum(parseGnrList(body), 5, "comunicados da GNR");
+  const records: IngestRecord[] = [];
+  for (const item of list.filter((entry) => recent(entry.published, input.now))) {
+    const { body: html } = await input.http.text(item.url);
+    const detail = parseGnrDetail(html);
+    if (!mentionsConcelho(`${detail.title} ${detail.text}`)) continue;
+    records.push(buildIncident({ url: item.url, title: detail.title || item.title, text: detail.text, published: detail.published ?? item.published, sourceName: "GNR", sourceTier: "OFICIAL", author: "Guarda Nacional Republicana", now: input.now }));
+  }
+  return { records };
+};
+
+const collectNoticiasAoMinuto: Collector = async (input) => {
+  const { body } = await input.http.text(NAM_SITEMAP);
+  const items = parseNewsSitemap(body);
+  assertContains(body, /news:publication_date/, "sitemap de notícias");
+  const records: IngestRecord[] = [];
+  // Só se abrem os artigos cujo título indica uma ocorrência, para não pedir páginas sem interesse.
+  for (const item of items.filter((entry) => recent(entry.published, input.now) && INCIDENT_HINT.test(searchKey(entry.title)))) {
+    const { body: html } = await input.http.text(item.url);
+    const article = parseNamArticle(html);
+    if (!mentionsConcelho(`${article.title} ${article.text}`)) continue;
+    records.push(buildIncident({ url: item.url, title: article.title || item.title, text: article.text, published: article.published ?? item.published, sourceName: "Notícias ao Minuto", sourceTier: "IMPRENSA", author: article.author, now: input.now }));
+  }
+  return { records };
+};
+
+type NewsFeed = {
+  feedUrl: string;
+  sourceName: string;
+  /** Páginas do feed a ler, no máximo: pára antes se os artigos já estiverem fora da janela. */
+  maxPages: number;
+  /** Feed de uma categoria só de Torres Vedras. */
+  concelhoImplied?: boolean;
+};
+
+/**
+ * Notícias de um feed RSS. O texto do feed serve só para extrair data, área e tipo; nunca é guardado.
+ * Pedidos condicionais: um feed sem alterações não volta a ser interpretado.
+ */
+export function newsFeedCollector(feed: NewsFeed): Collector {
+  return async (input) => {
+    const records: IngestRecord[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= feed.maxPages; page += 1) {
+      const url = page === 1 ? feed.feedUrl : `${feed.feedUrl}?paged=${page}`;
+      const { body, notModified } = await input.http.text(url, { cache: true });
+      if (notModified) break;
+      if (page === 1) assertContains(body, /<rss[\s>]/, `feed de ${feed.sourceName}`);
+      const items = parseRssFeed(body);
+      for (const item of items) {
+        if (seen.has(item.url) || !recent(item.published, input.now)) continue;
+        seen.add(item.url);
+        const full = `${item.title} ${item.text}`;
+        if (!INCIDENT_HINT.test(searchKey(item.title)) || (!feed.concelhoImplied && !mentionsConcelho(full))) continue;
+        records.push(buildIncident({
+          url: item.url,
+          title: item.title,
+          text: item.text,
+          published: item.published,
+          sourceName: feed.sourceName,
+          sourceTier: "IMPRENSA",
+          author: item.author,
+          articleCategory: item.categories.join(", ") || null,
+          concelhoImplied: feed.concelhoImplied,
+          now: input.now,
+        }));
+      }
+      const oldest = items.at(-1)?.published;
+      if (items.length === 0 || !recent(oldest ?? null, input.now)) break;
+    }
+    return { records };
+  };
+}
+
+type CommunityConfig = { contas: AccountEntry[]; mastodon: { instancia: string; etiquetas: string[] }; telegram: string[] };
+
+/** Contas conhecidas e canais a seguir, em prisma/data/fontes-comunitarias.json. */
+function readCommunityConfig(): CommunityConfig {
+  const file = path.join(process.cwd(), "prisma", "data", "fontes-comunitarias.json");
+  const fallback: CommunityConfig = { contas: [], mastodon: { instancia: "https://masto.pt", etiquetas: [] }, telegram: [] };
+  return existsSync(file) ? { ...fallback, ...(JSON.parse(readFileSync(file, "utf8")) as Partial<CommunityConfig>) } : fallback;
+}
+
+/** Publicação em rede social: o nível vem do registo de contas; sem registo, é fonte comunitária. */
+function socialPost(post: SocialPost, platform: string, config: CommunityConfig, now: Date): IngestRecord {
+  const account = { platform, handle: post.handle };
+  const tier = classifySourceTier(post.url, account, config.contas);
+  const known = config.contas.find((entry) => entry.platform === platform && entry.handle.toLowerCase() === post.handle.toLowerCase());
+  // Contas pessoais não são identificadas no registo público.
+  const sourceName = known?.name ?? (platform === "telegram" ? "Canal público de Telegram" : "Publicação no Mastodon");
+  return buildIncident({ url: post.url, title: firstSentence(post.text), text: post.text, published: post.published, sourceName, sourceTier: tier, account, engagement: post.engagement, now });
+}
+
+const collectMastodon: Collector = async (input) => {
+  const config = readCommunityConfig();
+  const records: IngestRecord[] = [];
+  const seen = new Set<string>();
+  for (const tag of config.mastodon.etiquetas) {
+    const { data } = await input.http.json<MastodonStatus[]>(`${config.mastodon.instancia}/api/v1/timelines/tag/${encodeURIComponent(tag)}?limit=40`);
+    for (const post of parseMastodonStatuses(data)) {
+      if (seen.has(post.url) || !recent(post.published, input.now) || !INCIDENT_HINT.test(searchKey(post.text))) continue;
+      seen.add(post.url);
+      if (!mentionsConcelho(post.text)) continue;
+      records.push(socialPost(post, "mastodon", config, input.now));
+    }
+  }
+  // Volta a ver as publicações já registadas: apagadas ou editadas a fundo descem de estado ou são arquivadas.
+  const tracked = await input.db.incident.findMany({ where: { sourceId: "mastodon-torresvedras", archivedAt: null, sourceRemovedAt: null }, select: { key: true } });
+  for (const { key } of tracked.filter((item) => !seen.has(item.key))) {
+    const id = key.match(/\/(\d+)$/)?.[1];
+    if (!id) continue;
+    try {
+      const { data } = await input.http.json<MastodonStatus>(`${config.mastodon.instancia}/api/v1/statuses/${id}`);
+      const [post] = parseMastodonStatuses([data]);
+      if (post) records.push(socialPost(post, "mastodon", config, input.now));
+    } catch (error) {
+      if (error instanceof Error && /\(404\)|\(410\)/.test(error.message)) records.push(removedPost(key));
+      else throw error;
+    }
+  }
+  return { records };
+};
+
+const collectTelegram: Collector = async (input) => {
+  const config = readCommunityConfig();
+  const records: IngestRecord[] = [];
+  for (const channel of config.telegram) {
+    const { body } = await input.http.text(`https://t.me/s/${encodeURIComponent(channel)}`);
+    for (const post of parseTelegramChannel(body, channel)) {
+      if (!recent(post.published, input.now) || !INCIDENT_HINT.test(searchKey(post.text)) || !mentionsConcelho(post.text)) continue;
+      records.push(socialPost(post, "telegram", config, input.now));
+    }
+  }
+  return { records };
+};
+
+/** Marca uma publicação como removida: só a ligação conta, os outros campos não são usados. */
+function removedPost(url: string): IngestRecord {
+  return {
+    kind: "incident", sourceUrl: url, sourceName: "", sourceTier: "COMUNITARIA", independenceKey: "", author: null, publishedAt: null, incidentStart: new Date(0), incidentEnd: null,
+    hasTime: false, category: "OUTRO", tags: [], summary: "", claim: "", titleFingerprint: "", textFingerprint: "", phase: null, denies: false, flags: [], doubts: [],
+    linkPublic: false, linkNote: null, engagement: 0, removed: true, freguesiaSlug: null, placeName: null, precision: null, latitude: null, longitude: null, radiusM: null,
+  };
+}
+
+type CuratedIncident = {
+  sourceUrl: string;
+  sourceName: string;
+  /** Sem nível, é calculado pelo endereço e pela conta. */
+  sourceTier?: SourceTier;
+  account?: { platform: string; handle: string };
+  author?: string;
+  publishedAt: string;
+  incidentStart: string;
+  incidentEnd?: string;
+  hasTime?: boolean;
+  category: IncidentCategory;
+  tags?: string[];
+  freguesia: string;
+  /** Nome de uma localidade conhecida ou de uma área pública nomeada por fonte fiável. */
+  placeName?: string;
+  precision?: GeoPrecision;
+  latitude?: number;
+  longitude?: number;
+  radiusM?: number;
+  phase?: IncidentPhase;
+  /** Ligação a uma ocorrência existente, pelo URL da sua primeira fonte. */
+  incidentKey?: string;
+  agreement?: Agreement;
+  /** Quem registou indicou que a publicação contém dados pessoais: a ligação não é publicada. */
+  personalData?: boolean;
+  removed?: boolean;
+  engagement?: number;
+};
+
+const collectCuratedIncidents: Collector = async () => {
+  const file = path.join(process.cwd(), "prisma", "data", "ocorrencias-curadas.json");
+  if (!existsSync(file)) return { records: [] };
+  const config = readCommunityConfig();
+  const items = JSON.parse(readFileSync(file, "utf8")) as CuratedIncident[];
+  const date = (value?: string) => (value ? new Date(value) : null);
+  return {
+    records: items.map((item): IngestRecord => {
+      // Áreas públicas só com fonte oficial ou imprensa; em violência doméstica, fica sempre a freguesia.
+      const tier = item.sourceTier ?? classifySourceTier(item.sourceUrl, item.account, config.contas);
+      const allowCustom = item.category !== "VIOLENCIA_DOMESTICA" && (item.precision !== "AREA_PUBLICA" || tier === "OFICIAL" || tier === "IMPRENSA");
+      const base = (allowCustom && item.precision === "LOCALIDADE" && item.placeName ? localidadePlace(item.placeName) : null) ?? freguesiaPlace(item.freguesia);
+      const custom = allowCustom && item.latitude !== undefined && item.longitude !== undefined && item.precision && item.precision !== "FREGUESIA" && item.precision !== "LOCALIDADE";
+      const place = custom
+        ? { freguesiaSlug: base?.freguesiaSlug ?? null, placeName: item.placeName ?? null, precision: item.precision!, latitude: item.latitude!, longitude: item.longitude!, radiusM: item.radiusM ?? PRECISION_RADIUS_M[item.precision!] }
+        : { freguesiaSlug: base?.freguesiaSlug ?? null, placeName: base?.placeName ?? null, precision: base?.precision ?? null, latitude: base?.latitude ?? null, longitude: base?.longitude ?? null, radiusM: base?.radiusM ?? null };
+      const start = date(item.incidentStart);
+      const unofficialTier = tier === "CONTA_OFICIAL" || tier === "COMUNITARIA";
+      const linkNote = !isArchivable(item.sourceUrl) ? "Ligação não publicada: a publicação não pode ser arquivada." : unofficialTier && item.personalData ? "Ligação não publicada: a publicação original contém dados pessoais." : null;
+      const summary = place.placeName ? neutralSummary(item.category, { placeName: place.placeName, precision: place.precision ?? "FREGUESIA" }) : "";
+      return {
+        kind: "incident",
+        sourceUrl: item.sourceUrl,
+        sourceName: item.sourceName,
+        sourceTier: tier,
+        independenceKey: independenceKey(item.sourceUrl, item.author, item.account),
+        author: item.author ?? null,
+        publishedAt: date(item.publishedAt),
+        incidentStart: start,
+        incidentEnd: date(item.incidentEnd),
+        hasTime: item.hasTime ?? false,
+        category: item.category,
+        tags: item.tags ?? [],
+        summary,
+        claim: place.placeName && start ? structuredClaim(item.category, { placeName: place.placeName }, start, item.agreement === "CONTRADIZ") : "",
+        titleFingerprint: titleFingerprint(`${item.category} ${place.placeName ?? ""}`),
+        textFingerprint: titleFingerprint(`${item.category} ${place.placeName ?? ""}`),
+        phase: item.phase ?? null,
+        denies: item.agreement === "CONTRADIZ",
+        flags: [],
+        doubts: [],
+        linkPublic: linkNote === null,
+        linkNote,
+        engagement: item.engagement ?? 0,
+        removed: item.removed ?? false,
+        incidentKey: item.incidentKey,
+        agreement: item.agreement,
+        ...place,
+      };
+    }),
+  };
+};
+
 export const COLLECTORS: Record<string, Collector> = {
+  "gnr-comunicados": collectGnr,
+  "noticias-ao-minuto": collectNoticiasAoMinuto,
+  "rtv-oeste": newsFeedCollector({ feedUrl: "https://www.rtvon.pt/feed/", sourceName: "RTV Oeste", maxPages: 3 }),
+  "onfm-torres-vedras": newsFeedCollector({ feedUrl: "https://onfm.pt/category/torres-vedras/feed/", sourceName: "ON FM", maxPages: 3, concelhoImplied: true }),
+  "mastodon-torresvedras": collectMastodon,
+  "telegram-canais": collectTelegram,
+  "ocorrencias-curadas": collectCuratedIncidents,
   "ine-crime": collectIneCrime,
   "ipma-avisos": collectIpma,
   "cm-avisos": collectCmAvisos,

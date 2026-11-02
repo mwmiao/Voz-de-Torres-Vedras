@@ -5,6 +5,7 @@ import { isOfficialUrl } from "@/lib/sources";
 import { sha256 } from "../fetchers/http";
 import type { ContractRecord, DocumentRecord, FinanceRecord, IngestRecord, MeetingRecord, ModificationRecord, OfficialRecord } from "../types";
 import { applyAlert, applyCrime, applyPopulation } from "./civic";
+import { applyIncident, applyIncidentRejection } from "./incidents";
 import { diffFields, type Change } from "./diff";
 
 /** Na primeira execução, só o que é recente aparece como novidade: o resto é o arquivo existente. */
@@ -284,6 +285,10 @@ export function applyRecord(context: ApplyContext, record: IngestRecord): Promis
       return applyCrime(context, record);
     case "population":
       return applyPopulation(context, record);
+    case "incident":
+      return applyIncident(context, record);
+    case "incident-rejected":
+      return applyIncidentRejection(context, record);
   }
 }
 

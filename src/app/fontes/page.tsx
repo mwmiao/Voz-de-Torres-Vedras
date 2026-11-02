@@ -2,6 +2,7 @@ import type { SourceType } from "@prisma/client";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { EmptyState, Pagination } from "@/components/civic";
+import { IncidentSources } from "@/components/IncidentSources";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
@@ -42,6 +43,8 @@ export default async function FontesPage({ searchParams }: { searchParams: Promi
         <LastUpdated date={updated._max.retrievedAt} className="mt-1" />
       </PageHead>
       <div className="mx-auto max-w-6xl px-4 py-8">
+        <IncidentSources />
+        <h2 className="mb-3 font-serif text-2xl font-semibold">Documentos oficiais</h2>
         <form role="search" method="get" className="mb-4 flex max-w-xl items-end gap-2">
           {type ? <input type="hidden" name="tipo" value={type} /> : null}
           <label className="flex-1 text-sm font-medium">Pesquisar fontes<input name="q" defaultValue={q} className="field mt-1" /></label>

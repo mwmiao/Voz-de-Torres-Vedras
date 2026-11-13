@@ -1,9 +1,9 @@
 import { ScrollTable } from "@/components/civic";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
+import { SOURCE_TIER_LABEL, SOURCE_TIER_NUMBER } from "@/lib/incidents";
 import { frequencyLabel, SOURCE_CATALOG, SOURCE_STATUS_LABEL, sourceStatus } from "@/lib/source-catalog";
 
-const TIER_LABEL: Record<number, string> = { 1: "1, autoridade oficial", 2: "2, comunicação social", 3: "3, conta oficial em rede social", 4: "4, fonte comunitária" };
 
 /** Origens das ocorrências recentes, com nível, cobertura, frequência e estado. */
 export async function IncidentSources() {
@@ -39,7 +39,7 @@ export async function IncidentSources() {
                     <th scope="row" className="px-3 py-2 text-left font-normal">
                       <a href={source.baseUrl} target="_blank" rel="noopener noreferrer" className="font-medium underline">{source.name}<span className="sr-only"> (abre noutra janela)</span></a>
                     </th>
-                    <td className="px-3 py-2">{source.tier ? TIER_LABEL[source.tier] : "O da fonte registada"}</td>
+                    <td className="px-3 py-2">{source.tier ? `${SOURCE_TIER_NUMBER[source.tier]}, ${SOURCE_TIER_LABEL[source.tier].toLowerCase()}` : "O da fonte registada"}</td>
                     <td className="px-3 py-2">{source.coverage ?? "—"}</td>
                     <td className="px-3 py-2">{frequencyLabel(source)}</td>
                     <td className="px-3 py-2">{state?.lastSuccessAt ? formatDateTime(state.lastSuccessAt) : "Sem registo"}</td>

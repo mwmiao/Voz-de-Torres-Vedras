@@ -84,8 +84,8 @@ describe("Jornal de Notícias: armas apreendidas (22 de outubro)", () => {
   });
 
   it("não trata Loures como lugar: aparece só no nome da esquadra", () => {
-    expect(detectPlace(`${JN.title}. ${JN.text}`).doubts).toEqual([]);
-    expect(detectPlace("Homem detido no concelho de Sobral de Monte Agraço; o posto fica em Torres Vedras.").doubts[0]).toMatch(/sobral/);
+    expect(detectPlace(`${JN.title}. ${JN.text}`)).toMatchObject({ multipleFreguesias: false, otherConcelhos: [] });
+    expect(detectPlace("Homem detido no concelho de Sobral de Monte Agraço; o posto fica em Torres Vedras.").otherConcelhos).toEqual(["sobral de monte agraco"]);
   });
 
   it("junta a notícia da RTV Oeste sobre a mesma apreensão como fonte que corrobora", () => {

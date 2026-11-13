@@ -1,4 +1,4 @@
-import type { Agreement, GeoPrecision, IncidentCategory, IncidentPhase, SourceTier, VerificationStatus } from "@prisma/client";
+import type { Agreement, GeoPrecision, IncidentCategory, IncidentPhase, Prisma, SourceTier, VerificationStatus } from "@prisma/client";
 
 /** O mapa nunca mostra ocorrências com mais de duas semanas. */
 export const WINDOW_DAYS = 14;
@@ -155,7 +155,8 @@ export function lisbonDay(date: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(date);
 }
 
-const shiftDay = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+/** Dia civil AAAA-MM-DD deslocado um número de dias. */
+export const shiftDay = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 
 /** Primeiro dia da janela: até 14 dias antes de hoje, inclusive. A 2 de novembro, começa a 19 de outubro. */
 export const windowStartDay = (now: Date) => shiftDay(lisbonDay(now), -WINDOW_DAYS);
@@ -244,10 +245,29 @@ export function filterIncidents<T extends Filterable>(incidents: T[], filters: P
   );
 }
 
-/** Mesmas regras que a página Segurança: não arquivada, não retida e dentro da janela. */
+/**
+ * Consulta das ocorrências públicas: não arquivadas, não retidas e desde o início da janela, com margem.
+ * O corte exato, pelo dia civil de Lisboa, faz-se depois com visibilityProblem.
+ */
+export const publicIncidentWhere = (now: Date): Prisma.IncidentWhereInput => ({ archivedAt: null, heldForReview: false, incidentStart: { gte: windowStart(now) } });
+
+/** Porque é que uma ocorrência não aparece no mapa, ou nulo se aparece. */
 export function visibilityProblem(incident: { archivedAt: Date | null; archiveReason: string | null; heldForReview: boolean; reviewReasons: string; incidentStart: Date }, at: Date): string | null {
   if (incident.archivedAt) return `arquivada: ${incident.archiveReason ?? "sem motivo"}`;
   if (incident.heldForReview) return `retida para revisão: ${incident.reviewReasons || "sem motivo"}`;
   if (lisbonDay(incident.incidentStart) < windowStartDay(at)) return `fora da janela: ocorrência a ${lisbonDay(incident.incidentStart)}, janela desde ${windowStartDay(at)}`;
   return null;
 }
+
+/** Indícios que a extração encontra no texto, guardados como palavras-chave e nunca como texto. */
+export const INCIDENT_FLAGS = ["grave", "menores", "violencia", "desmentido", "em-desenvolvimento", "data-da-publicacao"] as const;
+export type IncidentFlag = (typeof INCIDENT_FLAGS)[number];
+
+/** Listas gravadas como texto, porque o SQLite não tem listas: o separador de cada campo fica só aqui. */
+const SEPARATOR = { tags: ", ", flags: ",", doubts: "; ", reviewReasons: "; " } as const;
+export type StoredList = keyof typeof SEPARATOR;
+
+export const encodeList = (field: StoredList, items: readonly string[]) => items.join(SEPARATOR[field]);
+export const decodeList = (field: StoredList, text: string) => (text ? text.split(SEPARATOR[field]).filter(Boolean) : []);
+/** Indícios desconhecidos, de versões anteriores, são ignorados. */
+export const decodeFlags = (text: string): IncidentFlag[] => decodeList("flags", text).filter((flag): flag is IncidentFlag => (INCIDENT_FLAGS as readonly string[]).includes(flag));

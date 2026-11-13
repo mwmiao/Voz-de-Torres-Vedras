@@ -2,22 +2,12 @@
 
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { VerificationStatus } from "@prisma/client";
-import { formatDateTime } from "@/lib/format";
-import { formatIncidentWhen, formatShortDate } from "@/lib/incident-format";
 import { STATUS_CLASS, statusSvg } from "@/lib/incident-status";
-import {
-  BOUNDARIES_URL,
-  CONCELHO_POINT,
-  CONFLICT_NOTE,
-  INCIDENT_CATEGORY_LABEL,
-  PRECISION_LABEL,
-  SOURCE_TIER_NUMBER,
-  VERIFICATION_LABEL,
-  VERIFICATION_STATUSES,
-  type PublicIncident,
-} from "@/lib/incidents";
+import { BOUNDARIES_URL, CONCELHO_NAME, CONCELHO_POINT, PRECISION_LABEL, VERIFICATION_LABEL, VERIFICATION_STATUSES, type PublicIncident } from "@/lib/incidents";
+import { IncidentPopup, type PopupContent } from "./IncidentPopup";
 
 type Props = {
   incidents: PublicIncident[];
@@ -39,6 +29,7 @@ type Group = { key: string; latlng: L.LatLng; incidents: PublicIncident[] };
 type Place = { key: string; latlng: L.LatLng; byStatus: Group[]; count: number };
 
 const escape = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+const POPUP_OPTIONS = { maxWidth: 320, minWidth: 240, autoPanPadding: L.point(24, 24) };
 const plural = (count: number) => (count === 1 ? "1 ocorrência" : `${count} ocorrências`);
 const placeKey = (incident: Pick<PublicIncident, "latitude" | "longitude">) => `${incident.latitude},${incident.longitude}`;
 const groupKey = (incident: Pick<PublicIncident, "latitude" | "longitude" | "verificationStatus">) => `${placeKey(incident)}|${incident.verificationStatus}`;
@@ -89,38 +80,6 @@ function cluster(map: L.Map, places: Place[]): Place[][] {
   return clusters.map((item) => item.members);
 }
 
-function popupHtml(group: Group, selectedId: string | null): string {
-  const first = group.incidents[0];
-  const status = first.verificationStatus;
-  const mixed = group.incidents.some((incident) => incident.verificationStatus !== status);
-  const concelho = first.precision === "CONCELHO";
-  const items = group.incidents
-    .map((incident) => `
-      <li class="incident-popup__item${incident.id === selectedId ? " is-selected" : ""}">
-        ${mixed ? `<p class="status-badge ${STATUS_CLASS[incident.verificationStatus]}">${statusSvg(incident.verificationStatus)}Estado: ${escape(VERIFICATION_LABEL[incident.verificationStatus])}</p>` : ""}
-        <p class="incident-popup__type">${escape(INCIDENT_CATEGORY_LABEL[incident.category])}</p>
-        <p class="incident-popup__meta">${escape(formatIncidentWhen(incident))}</p>
-        <p>${escape(incident.summary)}</p>
-        ${incident.hasConflict ? `<p class="incident-popup__conflict">${escape(CONFLICT_NOTE)}</p>` : ""}
-        <p class="incident-popup__meta">Fonte: ${escape(incident.sourceName)} (nível ${SOURCE_TIER_NUMBER[incident.sourceTier]}) · publicado a ${escape(formatShortDate(incident.publicationDate))}</p>
-        ${incident.author && incident.author !== incident.sourceName ? `<p class="incident-popup__meta">Autoria indicada na fonte: ${escape(incident.author)}</p>` : ""}
-        ${incident.references.length ? `<p class="incident-popup__meta">Outras fontes: ${incident.references.length}</p>` : ""}
-        <p class="incident-popup__meta">Última verificação: ${escape(formatDateTime(new Date(incident.lastCheckedAt)))}</p>
-        <p class="incident-popup__actions">
-          ${incident.sourceUrl ? `<a href="${escape(incident.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="incident-popup__source">Ver fonte original<span class="sr-only"> (abre noutra janela)</span></a>` : `<span class="incident-popup__meta">${escape(incident.sourceLinkNote ?? "Ligação não publicada.")}</span>`}
-          <button type="button" class="incident-popup__list" data-incident="${escape(incident.id)}">Ver na lista</button>
-        </p>
-      </li>`)
-    .join("");
-  return `
-    <div class="incident-popup">
-      ${mixed ? "" : `<p class="status-badge ${STATUS_CLASS[status]}">${statusSvg(status)}Estado: ${escape(VERIFICATION_LABEL[status])}</p>`}
-      <h3 class="incident-popup__title" tabindex="-1">${escape(first.placeName)}</h3>
-      <p class="incident-popup__meta">${escape(plural(group.incidents.length))} · ${concelho ? "Localização aproximada (concelho): a fonte não indica a freguesia" : `Localização aproximada (${escape(PRECISION_LABEL[first.precision].toLowerCase())})`}</p>
-      <ul>${items}</ul>
-    </div>`;
-}
-
 function markerIcon(status: VerificationStatus | null, count: number, offsetX = 0): L.DivIcon {
   const size = 36;
   const badge = count > 1 || status === null ? `<span class="incident-marker__count">${count}</span>` : "";
@@ -139,9 +98,12 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
   const boundaries = useRef<L.GeoJSON | null>(null);
   const markers = useRef<L.LayerGroup | null>(null);
   const zones = useRef<L.LayerGroup | null>(null);
-  const markerByGroup = useRef(new Map<string, L.Marker>());
+  /** Como abrir os detalhes de cada ocorrência, conforme o lugar onde ficou desenhada. */
+  const openers = useRef(new Map<string, () => void>());
   const concelhoButton = useRef<HTMLButtonElement | null>(null);
-  const concelhoOpen = useRef(false);
+  /** Popup aberto: o elemento onde o React desenha o conteúdo, e o que fazer ao fechar. */
+  const [open, setOpen] = useState<(PopupContent & { element: HTMLElement }) | null>(null);
+  const current = useRef<{ popup: L.Popup; onClose: () => void } | null>(null);
   const callbacks = useRef({ onShowInList, onFreguesia, onError });
   const state = useRef({ incidents, freguesia, selectedId: focusRequest?.id ?? null });
   callbacks.current = { onShowInList, onFreguesia, onError };
@@ -210,25 +172,17 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
       });
 
     instance.on("zoomend", () => drawMarkers());
-    instance.on("popupclose", () => {
-      if (!concelhoOpen.current) return;
-      concelhoOpen.current = false;
-      styleBoundaries();
-      concelhoButton.current?.focus({ preventScroll: true });
+    instance.on("popupclose", (event) => {
+      if (current.current?.popup !== event.popup) return;
+      const { onClose } = current.current;
+      current.current = null;
+      setOpen(null);
+      onClose();
     });
     instance.on("popupopen", (event) => {
-      const element = event.popup.getElement();
-      element?.querySelectorAll<HTMLButtonElement>("[data-incident]").forEach((button) => {
-        button.addEventListener("click", () => {
-          instance.closePopup();
-          callbacks.current.onShowInList(button.dataset.incident!);
-        });
-      });
-      const close = element?.querySelector<HTMLAnchorElement>(".leaflet-popup-close-button");
+      const close = event.popup.getElement()?.querySelector<HTMLAnchorElement>(".leaflet-popup-close-button");
       close?.setAttribute("aria-label", "Fechar detalhes");
       close?.setAttribute("title", "Fechar detalhes");
-      element?.querySelector<HTMLElement>(".is-selected")?.scrollIntoView({ block: "nearest" });
-      element?.querySelector<HTMLElement>(".incident-popup__title")?.focus({ preventScroll: true });
     });
     return () => {
       alive = false;
@@ -254,21 +208,33 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
     });
   }
 
+  /** Todos os popups abrem por aqui: o conteúdo é desenhado pelo React, no elemento do Leaflet. */
+  function openPopup(content: PopupContent, latlng: L.LatLngExpression, offset: L.Point, onClose: () => void) {
+    const instance = map.current;
+    if (!instance) return;
+    instance.closePopup();
+    const element = document.createElement("div");
+    const popup = L.popup({ ...POPUP_OPTIONS, offset }).setLatLng(latlng).setContent(element);
+    current.current = { popup, onClose };
+    popup.openOn(instance);
+    setOpen({ ...content, element });
+  }
+
   function concelhoIncidents() {
     return state.current.incidents.filter((item) => item.precision === "CONCELHO");
   }
 
+  /** Ocorrências sem freguesia: o concelho inteiro fica realçado, sem marcador. */
   function openConcelho() {
     const instance = map.current;
     const items = concelhoIncidents();
     if (!instance || items.length === 0) return;
     instance.fitBounds(boundaries.current?.getBounds() ?? BOUNDS, { padding: [12, 12] });
     boundaries.current?.eachLayer((layer) => (layer as L.Path).setStyle({ weight: 2.5, opacity: 1, dashArray: "6 4", fillOpacity: 0.12, fillColor: INK }));
-    L.popup({ maxWidth: 320, minWidth: 240, autoPanPadding: L.point(24, 24) })
-      .setLatLng(CONCELHO_POINT)
-      .setContent(popupHtml({ key: "concelho", latlng: L.latLng(CONCELHO_POINT), incidents: items }, state.current.selectedId))
-      .openOn(instance);
-    concelhoOpen.current = true;
+    openPopup({ title: CONCELHO_NAME, location: "concelho: a fonte não indica a freguesia", incidents: items }, CONCELHO_POINT, L.point(0, 7), () => {
+      styleBoundaries();
+      concelhoButton.current?.focus({ preventScroll: true });
+    });
   }
 
   function drawConcelhoButton() {
@@ -279,15 +245,16 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
     const text = `Concelho inteiro: ${plural(items.length)} sem freguesia indicada`;
     button.innerHTML = `<span aria-hidden="true" class="incident-concelho__count">${items.length}</span> ${escape(text)}`;
     button.setAttribute("aria-label", `${text} (${statusBreakdown(items)}). Abrir detalhes`);
+    for (const incident of items) openers.current.set(incident.id, openConcelho);
   }
 
   function drawMarkers() {
     const instance = map.current;
     if (!instance || !markers.current || !zones.current) return;
-    drawConcelhoButton();
     markers.current.clearLayers();
     zones.current.clearLayers();
-    markerByGroup.current.clear();
+    openers.current.clear();
+    drawConcelhoButton();
     const places = groupByPlace(state.current.incidents);
     for (const place of places) {
       const radius = place.byStatus[0].incidents[0].radiusM;
@@ -300,12 +267,20 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
           const status = group.incidents[0].verificationStatus;
           // Estados diferentes no mesmo lugar ficam lado a lado, centrados no ponto.
           const offset = (index - (place.byStatus.length - 1) / 2) * 40;
-          const marker = L.marker(group.latlng, { icon: markerIcon(status, group.incidents.length, offset), keyboard: true, riseOnHover: true })
-            .bindPopup(() => popupHtml(group, state.current.selectedId), { maxWidth: 320, minWidth: 240, autoPanPadding: L.point(24, 24) })
-            .addTo(markers.current!);
-          label(marker, `${VERIFICATION_LABEL[status]}: ${plural(group.incidents.length)} em ${group.incidents[0].placeName}. Abrir detalhes`);
-          marker.on("popupclose", () => marker.getElement()?.focus({ preventScroll: true }));
-          markerByGroup.current.set(group.key, marker);
+          const first = group.incidents[0];
+          const marker = L.marker(group.latlng, { icon: markerIcon(status, group.incidents.length, offset), keyboard: true, riseOnHover: true }).addTo(markers.current!);
+          const show = () =>
+            openPopup({ title: first.placeName, location: PRECISION_LABEL[first.precision].toLowerCase(), incidents: group.incidents }, group.latlng, L.point(offset, -11), () =>
+              marker.getElement()?.focus({ preventScroll: true }),
+            );
+          marker.on("click", show);
+          label(marker, `${VERIFICATION_LABEL[status]}: ${plural(group.incidents.length)} em ${first.placeName}. Abrir detalhes`);
+          for (const incident of group.incidents) {
+            openers.current.set(incident.id, () => {
+              instance.panTo(group.latlng);
+              show();
+            });
+          }
         });
       } else {
         const bounds = L.latLngBounds(members.map((place) => place.latlng));
@@ -315,7 +290,13 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
           .on("click", () => instance.fitBounds(bounds.pad(0.6), { maxZoom: 14 }))
           .addTo(markers.current);
         label(marker, `${plural(all.length)} em ${names.join(", ")} (${statusBreakdown(all)}). Aproximar o mapa`);
-        for (const place of members) for (const group of place.byStatus) markerByGroup.current.set(group.key, marker);
+        // Uma ocorrência num grupo abre-se depois de aproximar: o redesenho regista o marcador próprio.
+        for (const incident of all) {
+          openers.current.set(incident.id, () => {
+            instance.once("zoomend", () => openers.current.get(incident.id)?.());
+            instance.setView([incident.latitude, incident.longitude], 14);
+          });
+        }
       }
     }
   }
@@ -353,30 +334,13 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
 
   // Escolha feita na lista: mostra o lugar e abre os detalhes.
   useEffect(() => {
-    const instance = map.current;
-    if (!instance || !focusRequest) return;
-    const incident = state.current.incidents.find((item) => item.id === focusRequest.id);
-    if (!incident) return;
-    if (incident.precision === "CONCELHO") {
-      openConcelho();
-      return;
-    }
-    const key = groupKey(incident);
-    const open = () => {
-      const marker = markerByGroup.current.get(key);
-      if (marker?.getPopup()) marker.openPopup();
-    };
-    const marker = markerByGroup.current.get(key);
-    if (marker && marker.getPopup()) {
-      instance.panTo(marker.getLatLng());
-      open();
-    } else {
-      instance.once("zoomend", open);
-      instance.setView([incident.latitude, incident.longitude], 14);
-    }
-    // As funções de desenho leem sempre o estado atual através de refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (focusRequest) openers.current.get(focusRequest.id)?.();
   }, [focusRequest]);
+
+  // Depois de o React desenhar o conteúdo, o Leaflet volta a medir o popup.
+  useEffect(() => {
+    current.current?.popup.update();
+  }, [open]);
 
   return (
     <div
@@ -388,6 +352,22 @@ export default function IncidentMap({ incidents, freguesia, focusRequest, onShow
       onKeyDown={(event) => {
         if (event.key === "Escape") map.current?.closePopup();
       }}
-    />
+    >
+      {open
+        ? createPortal(
+            <IncidentPopup
+              title={open.title}
+              location={open.location}
+              incidents={open.incidents}
+              selectedId={focusRequest?.id ?? null}
+              onShowInList={(id) => {
+                map.current?.closePopup();
+                callbacks.current.onShowInList(id);
+              }}
+            />,
+            open.element,
+          )
+        : null}
+    </div>
   );
 }

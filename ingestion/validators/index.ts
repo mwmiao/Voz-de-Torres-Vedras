@@ -1,4 +1,3 @@
-import { CONCELHO, FREGUESIA_POINTS } from "@/lib/incidents";
 import { isOfficialUrl } from "@/lib/sources";
 import { StructureError, type IngestRecord } from "../types";
 
@@ -61,18 +60,8 @@ export function validateRecord(record: IngestRecord): string[] {
       need(isOfficialUrl(record.sourceUrl), "sourceUrl");
       break;
     case "incident":
-      // A montagem já garante os campos e as regras de política; aqui só o que o tipo não exprime.
-      need(isHttp(record.sourceUrl), "sourceUrl");
-      need(record.sourceName, "sourceName");
-      need(!Number.isNaN(record.publishedAt.getTime()), "publishedAt");
-      need(!Number.isNaN(record.incidentStart.getTime()), "incidentStart");
-      need(FREGUESIA_POINTS[record.freguesiaSlug] || (record.freguesiaSlug === CONCELHO && record.precision === "CONCELHO"), "freguesiaSlug");
-      // O ponto tem de cair dentro do concelho.
-      need(record.latitude > 38.98 && record.latitude < 39.25, "latitude");
-      need(record.longitude > -9.45 && record.longitude < -9.1, "longitude");
-      need(record.summary.length >= 20, "summary");
-      break;
     case "incident-removed":
+      // A montagem do relato já valida os campos e as regras: chegam aqui completos ou como recusas.
       need(isHttp(record.sourceUrl), "sourceUrl");
       break;
     case "incident-rejected":

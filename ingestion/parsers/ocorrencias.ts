@@ -1,9 +1,20 @@
 import type { Agreement, IncidentCategory, IncidentPhase, SourceTier } from "@prisma/client";
-import * as cheerio from "cheerio";
 import { FREGUESIAS } from "@/lib/alerts";
-import { CONCELHO, CONCELHO_NAME, CONCELHO_POINT, FREGUESIA_POINTS, INCIDENT_CATEGORY_LABEL, LOCALIDADES, PRECISION_RADIUS_M, WINDOW_DAYS } from "@/lib/incidents";
+import {
+  CONCELHO,
+  CONCELHO_NAME,
+  CONCELHO_POINT,
+  FREGUESIA_POINTS,
+  INCIDENT_CATEGORY_LABEL,
+  lisbonDay,
+  LOCALIDADES,
+  PRECISION_RADIUS_M,
+  shiftDay,
+  WINDOW_DAYS,
+  type IncidentFlag,
+} from "@/lib/incidents";
 import { searchKey } from "@/lib/search";
-import { detectPersonalData, independenceKey, isArchivable } from "@/lib/source-tiers";
+import { detectPersonalData, independenceKey, isArchivable, isReliable } from "@/lib/source-tiers";
 import { fingerprintSimilarity } from "@/lib/verification";
 import { sha256 } from "../fetchers/http";
 import { cleanText, lisbonDate, MONTH_PATTERN, monthNumber } from "../normalizers";
@@ -92,7 +103,21 @@ export function localidadePlace(name: string): IncidentPlace | null {
  * Lugar mais específico que o texto nomeia, nunca uma morada. Devolve também as dúvidas:
  * com mais do que uma freguesia, ou com outros concelhos, o registo fica por verificar.
  */
-export function detectPlace(text: string): { place: IncidentPlace | null; doubts: string[]; concelho: boolean } {
+export type PlaceDetection = {
+  place: IncidentPlace | null;
+  /** O texto refere Torres Vedras. */
+  concelho: boolean;
+  multipleFreguesias: boolean;
+  /** Concelhos vizinhos nomeados como lugar. */
+  otherConcelhos: string[];
+};
+
+/** Dúvidas de uma deteção, em texto para a fila de revisão. */
+export function placeDoubts({ multipleFreguesias, otherConcelhos }: Pick<PlaceDetection, "multipleFreguesias" | "otherConcelhos">): string[] {
+  return [...(multipleFreguesias ? ["refere mais do que uma freguesia"] : []), ...(otherConcelhos.length > 0 ? [`refere também outros concelhos (${otherConcelhos.join(", ")})`] : [])];
+}
+
+export function detectPlace(text: string): PlaceDetection {
   const key = searchKey(text).replaceAll("-", " ");
   const concelho = mentions(key, "torres vedras");
   const found: { index: number; place: IncidentPlace }[] = [];
@@ -109,26 +134,21 @@ export function detectPlace(text: string): { place: IncidentPlace | null; doubts
     }
   }
   found.sort((a, b) => a.index - b.index);
-  const doubts: string[] = [];
-  const slugs = new Set(found.map((item) => item.place.freguesiaSlug));
-  if (slugs.size > 1) doubts.push("refere mais do que uma freguesia");
+  const multipleFreguesias = new Set(found.map((item) => item.place.freguesiaSlug)).size > 1;
   // Um concelho vizinho só conta como lugar («na Lourinhã», «no concelho de Sobral»), não como nome
   // de uma instituição («Bombeiros Voluntários da Lourinhã», «Esquadra de Investigação Criminal de Loures»).
-  const others = OTHER_CONCELHOS.filter((name) => mentionsAsPlace(key, name));
-  if (others.length > 0) doubts.push(`refere também outros concelhos (${others.join(", ")})`);
+  const otherConcelhos = OTHER_CONCELHOS.filter((name) => mentionsAsPlace(key, name));
   const first = found[0]?.place;
-  if (!first) return { place: null, doubts, concelho };
   // Uma localidade da mesma freguesia é mais específica do que a freguesia.
-  const specific = found.find((item) => item.place.freguesiaSlug === first.freguesiaSlug && item.place.precision === "LOCALIDADE")?.place;
-  return { place: specific ?? first, doubts, concelho };
+  const specific = first && found.find((item) => item.place.freguesiaSlug === first.freguesiaSlug && item.place.precision === "LOCALIDADE")?.place;
+  return { place: specific ?? first ?? null, concelho, multipleFreguesias, otherConcelhos };
 }
 
 // ---------- Data e hora ----------
 
 const WEEKDAYS = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"];
+/** Meio-dia UTC de um dia civil, para não mudar de data com o fuso. */
 const at = (day: string) => new Date(`${day}T12:00:00Z`);
-const shift = (day: string, days: number) => new Date(at(day).getTime() + days * DAY_MS).toISOString().slice(0, 10);
-const lisbonDay = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(date);
 
 /**
  * Data da ocorrência, como o texto a indica: uma data escrita ou uma referência relativa à publicação
@@ -145,7 +165,7 @@ export function parseIncidentDate(rawText: string, published: Date): { start: Da
     const year = match[3] ? Number(match[3]) : Number(publishedDay.slice(0, 4));
     let candidate = `${year}-${String(month).padStart(2, "0")}-${String(Number(match[1])).padStart(2, "0")}`;
     // Sem ano, uma data posterior à publicação é do ano anterior.
-    if (!match[3] && candidate > shift(publishedDay, 1)) candidate = `${year - 1}${candidate.slice(4)}`;
+    if (!match[3] && candidate > shiftDay(publishedDay, 1)) candidate = `${year - 1}${candidate.slice(4)}`;
     const age = (at(publishedDay).getTime() - at(candidate).getTime()) / DAY_MS;
     if (age >= -1 && age <= 60) {
       day = candidate;
@@ -154,15 +174,15 @@ export function parseIncidentDate(rawText: string, published: Date): { start: Da
   }
 
   if (!day) {
-    if (/\banteontem\b/.test(text)) day = shift(publishedDay, -2);
-    else if (/\bontem\b/.test(text)) day = shift(publishedDay, -1);
+    if (/\banteontem\b/.test(text)) day = shiftDay(publishedDay, -2);
+    else if (/\bontem\b/.test(text)) day = shiftDay(publishedDay, -1);
     else if (/\bhoje\b|\besta (manha|tarde|noite|madrugada)\b/.test(text)) day = publishedDay;
     else {
       const weekday = text.match(/\b(?:no|na|neste|nesta|este|esta|deste|desta|de|ao|a)\s+(?:(?:noite|madrugada|manha|tarde)\s+de\s+)?(domingo|segunda|terca|quarta|quinta|sexta|sabado)\b/);
       if (weekday) {
         const target = WEEKDAYS.indexOf(weekday[1]);
         const current = at(publishedDay).getUTCDay();
-        day = shift(publishedDay, -((current - target + 7) % 7));
+        day = shiftDay(publishedDay, -((current - target + 7) % 7));
       }
     }
   }
@@ -195,9 +215,9 @@ export function detectPhase(text: string, category: IncidentCategory): IncidentP
 export const DENIAL = /desment|nao se confirm|falso alarme|nao ha registo|sem registo de|informacao falsa|nao corresponde a verdade|e falsa\b/;
 
 /** Indícios guardados como palavras-chave, nunca como texto. */
-export function detectFlags(text: string): string[] {
+export function detectFlags(text: string): IncidentFlag[] {
   const key = searchKey(text);
-  const flags: string[] = [];
+  const flags: IncidentFlag[] = [];
   if (/homicid|\bmort[eoa]s?\b|violac|abuso sexual|\brapto|sequestr|esfaque|\btiros?\b|baleado|arma de fogo/.test(key)) flags.push("grave");
   if (/\bmenor(es)?\b|crianc|\bbebe\b|\balun[oa]s?\b|\bescola\b|adolescente|jovem de 1[0-7] anos/.test(key)) flags.push("menores");
   if (/agress|agredid|espanc|violencia/.test(key)) flags.push("violencia");
@@ -264,7 +284,7 @@ export type IncidentFacts = {
   incidentEnd?: Date | null;
   hasTime: boolean;
   phase: IncidentPhase | null;
-  flags: string[];
+  flags: IncidentFlag[];
   doubts: string[];
   denies: boolean;
   /** Dados pessoais encontrados na publicação, ou declarados por quem a registou. */
@@ -294,7 +314,11 @@ export type IncidentSource = {
 
 const reject = (sourceUrl: string, reason: string): IncidentRejection => ({ kind: "incident-rejected", sourceUrl, reason });
 
-const isReliable = (tier: SourceTier) => tier === "OFICIAL" || tier === "IMPRENSA";
+/** Freguesia conhecida, ou o concelho inteiro, com o ponto dentro do concelho. */
+function isInsideConcelho(place: IncidentPlace): boolean {
+  const known = Boolean(FREGUESIA_POINTS[place.freguesiaSlug]) || (place.freguesiaSlug === CONCELHO && place.precision === "CONCELHO");
+  return known && place.latitude > 38.98 && place.latitude < 39.25 && place.longitude > -9.45 && place.longitude < -9.1;
+}
 
 /** Políticas de lugar: violência doméstica só ao nível da freguesia, áreas públicas só de fontes fiáveis. */
 function safePlace(place: IncidentPlace, category: IncidentCategory, tier: SourceTier): IncidentPlace {
@@ -307,6 +331,9 @@ function safePlace(place: IncidentPlace, category: IncidentCategory, tier: Sourc
 /** Junta factos e fonte num relato pronto a gravar, ou explica porque é recusado. */
 export function assembleIncident(source: IncidentSource, facts: IncidentFacts, now: Date): IncidentRecord | IncidentRejection {
   const reliable = isReliable(source.sourceTier);
+  if (!/^https?:\/\//.test(source.url)) return reject(source.url, "ligação inválida");
+  if (Number.isNaN(source.publishedAt.getTime()) || (facts.incidentStart && Number.isNaN(facts.incidentStart.getTime()))) return reject(source.url, "data inválida");
+  if (!isInsideConcelho(facts.place)) return reject(source.url, `lugar fora do concelho: ${facts.place.placeName}`);
   // Autoridades e imprensa podem ficar ao nível do concelho e sem data; redes sociais não.
   if (facts.place.precision === "CONCELHO" && !reliable) return reject(source.url, "sem área geográfica utilizável: a fonte só indica o concelho");
   if (!facts.incidentStart && !reliable) return reject(source.url, "sem data da ocorrência");
@@ -342,7 +369,7 @@ export function assembleIncident(source: IncidentSource, facts: IncidentFacts, n
     textFingerprint: titleFingerprint(fingerprint.full),
     phase: facts.phase,
     denies: facts.denies,
-    flags: [...facts.flags, ...(facts.incidentStart ? [] : ["data-da-publicacao"])],
+    flags: facts.incidentStart ? facts.flags : [...facts.flags, "data-da-publicacao"],
     doubts: facts.doubts,
     linkPublic: linkNote === null,
     linkNote,
@@ -374,12 +401,13 @@ export function buildIncident(input: ArticleInput): IncidentRecord | IncidentRej
   if (NOT_AN_INCIDENT.test(searchKey(title))) return reject(url, "não descreve uma ocorrência (campanha, balanço ou iniciativa)");
   const classification = classifyIncident(title, text);
   if (!classification) return reject(url, "não descreve uma ocorrência reconhecida");
-  const { place, doubts, concelho } = detectPlace(full);
+  const detection = detectPlace(full);
+  const { place, concelho, otherConcelhos } = detection;
   // Há lugares com o mesmo nome noutros concelhos, como Maceira ou Santa Cruz.
   if (!concelho && !input.concelhoImplied) return reject(url, "não refere o concelho de Torres Vedras");
   // Hospitais, tribunais e destacamentos com sede em Torres Vedras aparecem em notícias de outros concelhos.
-  const elsewhere = doubts.find((doubt) => doubt.startsWith("refere também outros concelhos"));
-  if (!place && elsewhere) return reject(url, `a ocorrência é noutro concelho: ${elsewhere.replace("refere também outros concelhos ", "")}`);
+  if (!place && otherConcelhos.length > 0) return reject(url, `a ocorrência é noutro concelho: (${otherConcelhos.join(", ")})`);
+  const doubts = placeDoubts(detection);
   const date = parseIncidentDate(full, published);
   const flags = detectFlags(full);
   const unofficial = !isReliable(input.sourceTier);
@@ -401,77 +429,4 @@ export function buildIncident(input: ArticleInput): IncidentRecord | IncidentRej
     },
     now,
   );
-}
-
-// ---------- GNR ----------
-
-export const GNR = "https://www.gnr.pt";
-export const GNR_LIST = `${GNR}/comunicados.aspx`;
-
-const dmy = (text: string): Date | null => {
-  const match = text.match(/(\d{2})-(\d{2})-(\d{4})/);
-  return match ? new Date(Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]), 12)) : null;
-};
-
-export function parseGnrList(html: string): { url: string; title: string; published: Date | null }[] {
-  const $ = cheerio.load(html);
-  return $('a[href*="comunicado.aspx?linha="]').toArray().flatMap((element) => {
-    const link = $(element);
-    const title = cleanText(link.text());
-    const row = link.closest("tr");
-    const date = row.nextAll("tr").slice(0, 2).text();
-    if (!title) return [];
-    return [{ url: new URL(link.attr("href") ?? "", `${GNR}/`).href, title, published: dmy(date) }];
-  });
-}
-
-export function parseGnrDetail(html: string): { title: string; text: string; published: Date | null } {
-  const $ = cheerio.load(html);
-  const box = $("#ctl00_Conteudo_DetalheNoticia");
-  const title = cleanText(box.find("#ctl00_Conteudo_DetalheNoticia_titulo").text());
-  const published = dmy(box.find("#ctl00_Conteudo_DetalheNoticia_datainicio").text());
-  box.find("#ctl00_Conteudo_DetalheNoticia_titulo, [id$=datainicio], [id$=Labeldatainicio], img, script").remove();
-  return { title, text: cleanText(box.text()), published };
-}
-
-// ---------- Notícias ao Minuto ----------
-
-export const NAM = "https://www.noticiasaominuto.com";
-export const NAM_SITEMAP = `${NAM}/sitemap.xml`;
-
-/** Sitemap de notícias: só a secção País, onde estão as ocorrências locais. */
-export function parseNewsSitemap(xml: string): { url: string; title: string; published: Date | null }[] {
-  const $ = cheerio.load(xml, { xml: true });
-  return $("url").toArray().flatMap((element) => {
-    const item = $(element);
-    const url = item.find("loc").first().text().trim();
-    if (!url.startsWith(`${NAM}/pais/`)) return [];
-    const date = new Date(item.find("news\\:publication_date").text().trim());
-    return [{ url, title: cleanText(item.find("news\\:title").text()), published: Number.isNaN(date.getTime()) ? null : date }];
-  });
-}
-
-type LdArticle = { "@type"?: string; headline?: string; datePublished?: string; author?: { name?: string } | { name?: string }[] };
-
-export function parseNamArticle(html: string): { title: string; text: string; published: Date | null; author: string | null } {
-  const $ = cheerio.load(html);
-  let article: LdArticle | undefined;
-  $('script[type="application/ld+json"]').each((_, element) => {
-    try {
-      const data = JSON.parse($(element).text()) as LdArticle | LdArticle[];
-      const items = Array.isArray(data) ? data : [data];
-      article ??= items.find((item) => item["@type"] === "NewsArticle");
-    } catch {
-      // Blocos inválidos são ignorados: os outros chegam.
-    }
-  });
-  const paragraphs = $(".article-content p").toArray().map((element) => cleanText($(element).text())).filter((text) => text && !/^leia tamb[ée]m/i.test(text));
-  const author = Array.isArray(article?.author) ? article.author[0]?.name : article?.author?.name;
-  const published = article?.datePublished ? new Date(article.datePublished) : null;
-  return {
-    title: cleanText(article?.headline ?? $("h1").first().text()),
-    text: paragraphs.join(" "),
-    published: published && !Number.isNaN(published.getTime()) ? published : null,
-    author: author ?? null,
-  };
 }

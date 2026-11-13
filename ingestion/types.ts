@@ -13,6 +13,7 @@ import type {
   UpdateCategory,
 } from "@prisma/client";
 import type { NormalizedContract } from "@/lib/import/base";
+import type { IncidentFlag } from "@/lib/incidents";
 
 export type DocumentRecord = {
   kind: "document";
@@ -133,7 +134,7 @@ export type IncidentRecord = IncidentPlace & {
   textFingerprint: string;
   phase: IncidentPhase | null;
   denies: boolean;
-  flags: string[];
+  flags: IncidentFlag[];
   /** Dúvidas que impedem a publicação até revisão, como várias freguesias. */
   doubts: string[];
   linkPublic: boolean;

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { PageHead } from "@/components/labels";
 import { db } from "@/lib/db";
 import { formatDate, formatNumber, formatTime, RUN_STATUS_LABEL } from "@/lib/format";
+import { SOURCE_TIER_NUMBER } from "@/lib/incidents";
 import { SOURCE_CATALOG, SOURCE_STATUS_LABEL, sourceStatus, type FetchMethod } from "@/lib/source-catalog";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +59,7 @@ export default async function EstadoDasFontesPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-block rounded bg-record-soft px-1.5 py-0.5 text-xs font-semibold text-record">{METHOD_LABEL[source.method]}</span>
                   {sourceStatus(source) !== "ATIVA" ? <span className="inline-block rounded border border-dashed border-muted px-1.5 py-0.5 text-xs font-semibold text-muted">{SOURCE_STATUS_LABEL[sourceStatus(source)]}</span> : null}
-                  {source.tier ? <span className="inline-block rounded border border-line px-1.5 py-0.5 text-xs font-semibold">Nível {source.tier}</span> : null}
+                  {source.tier ? <span className="inline-block rounded border border-line px-1.5 py-0.5 text-xs font-semibold">Nível {SOURCE_TIER_NUMBER[source.tier]}</span> : null}
                 </div>
                 <h2 className="mt-2 font-serif text-lg font-semibold">
                   <a href={source.baseUrl} target="_blank" rel="noopener noreferrer" className="underline">
@@ -81,11 +82,11 @@ export default async function EstadoDasFontesPage() {
                   {source.method !== "TRANSCRICAO" ? (
                     <>
                       <dt className="text-muted">Último estado</dt>
-                      <dd>{source.enabled ? RUN_STATUS_LABEL[status] : "Desativada"}</dd>
+                      <dd>{source.mode === "automatic" ? RUN_STATUS_LABEL[status] : "Desativada"}</dd>
                     </>
                   ) : null}
                   <dt className="text-muted">Frequência</dt>
-                  <dd>{source.enabled ? frequency(source.frequencyHours) : "Sem recolha"}</dd>
+                  <dd>{source.mode === "automatic" ? frequency(source.frequencyHours) : "Sem recolha"}</dd>
                   <dt className="text-muted">Registos</dt>
                   <dd>{formatNumber(counts.get(source.id) ?? 0)}</dd>
                 </dl>

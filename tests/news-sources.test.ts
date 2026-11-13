@@ -46,7 +46,7 @@ const incidents = (records: IngestRecord[]) => records.filter((record): record i
 describe("registo das novas fontes", () => {
   it("regista a RTV Oeste e a ON FM como imprensa ativa, com recolhedor", () => {
     for (const id of ["rtv-oeste", "onfm-torres-vedras"]) {
-      expect(source(id)).toMatchObject({ enabled: true, tier: 2, group: "ocorrencias" });
+      expect(source(id)).toMatchObject({ mode: "automatic", tier: "IMPRENSA", group: "ocorrencias" });
       expect(source(id).coverage).toBeTruthy();
       expect(COLLECTORS[id]).toBeTypeOf("function");
       expect(sourceStatus(source(id))).toBe("ATIVA");
@@ -58,7 +58,7 @@ describe("registo das novas fontes", () => {
 
   it("deixa o JN só para registo à mão, com o motivo, e sem recolhedor", () => {
     const jn = source("jn-torres-vedras");
-    expect(jn).toMatchObject({ enabled: false, manualOnly: true, tier: 2 });
+    expect(jn).toMatchObject({ mode: "manual", tier: "IMPRENSA" });
     expect(jn.disabledReason).toMatch(/proíbe/);
     expect(COLLECTORS["jn-torres-vedras"]).toBeUndefined();
     expect(sourceStatus(jn)).toBe("SO_MANUAL");
@@ -68,9 +68,9 @@ describe("registo das novas fontes", () => {
   it("nunca recolhe origens desativadas, só manuais ou desligadas, mesmo pedidas pelo nome", () => {
     const fake = { ...COLLECTORS, "jn-torres-vedras": async () => ({ records: [] }) };
     const ids = (options: Parameters<typeof selectSources>[2]) => selectSources(SOURCE_CATALOG, fake, options).map((item) => item.id);
-    expect(ids({ only: ["jn-torres-vedras", "badaladas", "rtv-oeste"], disabled: [], alertsOnly: false })).toEqual(["rtv-oeste"]);
-    expect(ids({ only: [], disabled: ["onfm-torres-vedras"], alertsOnly: true })).not.toContain("onfm-torres-vedras");
-    expect(ids({ only: [], disabled: [], alertsOnly: true })).toEqual(expect.arrayContaining(["rtv-oeste", "onfm-torres-vedras"]));
+    expect(ids({ only: ["jn-torres-vedras", "badaladas", "rtv-oeste"], disabled: [], frequentOnly: false })).toEqual(["rtv-oeste"]);
+    expect(ids({ only: [], disabled: ["onfm-torres-vedras"], frequentOnly: true })).not.toContain("onfm-torres-vedras");
+    expect(ids({ only: [], disabled: [], frequentOnly: true })).toEqual(expect.arrayContaining(["rtv-oeste", "onfm-torres-vedras"]));
   });
 
   it("respeita o robots.txt: um caminho excluído não é pedido", async () => {

@@ -33,6 +33,8 @@ jobs:
       - run: npm run data:bootstrap
       - run: npm run data:validate
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       - name: Testar a aplicação na porta 1400
         run: |
           cp -r .next/static .next/standalone/.next/static

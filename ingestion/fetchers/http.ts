@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { isAllowedByRobots, USER_AGENT } from "@/lib/robots";
 
@@ -45,11 +45,25 @@ export class PoliteHttp {
   ) {
     mkdirSync(cacheDir, { recursive: true });
     this.cacheFile = path.join(cacheDir, "http.json");
-    this.cache = existsSync(this.cacheFile) ? JSON.parse(readFileSync(this.cacheFile, "utf8")) : {};
+    this.cache = this.loadCache(this.cacheFile);
+  }
+
+  /** Uma cache corrompida só custa pedidos novos: recomeça vazia. */
+  private loadCache(file: string): Record<string, CacheEntry> {
+    if (!existsSync(file)) return {};
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      return {};
+    }
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, CacheEntry>) : {};
   }
 
   saveCache() {
-    writeFileSync(this.cacheFile, JSON.stringify(this.cache));
+    const tmp = `${this.cacheFile}.tmp`;
+    writeFileSync(tmp, JSON.stringify(this.cache));
+    renameSync(tmp, this.cacheFile);
   }
 
   private async pause(origin: string) {

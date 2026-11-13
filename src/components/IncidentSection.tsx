@@ -1,4 +1,3 @@
-import type { Incident, IncidentReference } from "@prisma/client";
 import { Disclosure, ExternalLink } from "@/components/civic";
 import { IncidentExplorer } from "@/components/IncidentExplorer";
 import { CsvLink } from "@/components/labels";
@@ -11,24 +10,21 @@ import { SOURCE_CATALOG } from "@/lib/source-catalog";
 import {
   BOUNDARIES_SOURCE,
   clampRange,
-  CONCELHO,
-  CONCELHO_NAME,
   INCIDENT_CATEGORIES,
-  lisbonDay,
   METHOD_INTRO,
+  publicIncidentWhere,
   REVIEW_DEFAULTS,
   SOURCE_TIER_LABEL,
-  SOURCE_TIER_NUMBER,
   VERIFICATION_HELP,
   VERIFICATION_LABEL,
   VERIFICATION_STATUSES,
+  visibilityProblem,
   WINDOW_DAYS,
   windowStart,
   windowStartDay,
-  type PublicIncident,
 } from "@/lib/incidents";
+import { toPublicIncident } from "@/lib/public-incident";
 
-const NAMES = Object.fromEntries(FREGUESIAS.map((item) => [item.slug, item.name]));
 const INCIDENT_SOURCES = SOURCE_CATALOG.filter((source) => source.group === "ocorrencias").map((source) => source.id);
 
 const POLICY = [
@@ -44,70 +40,21 @@ const POLICY = [
   "Os resumos são escritos a partir de modelos neutros: não reproduzem nomes, idades, moradas, matrículas ou outros pormenores, nem atribuem culpa. Se uma publicação de rede social expõe dados pessoais, a ligação não é publicada.",
 ];
 
-type Row = Incident & { references: IncidentReference[] };
-
-/**
- * Só campos públicos: ligações com dados pessoais ou sem arquivo ficam de fora. A fonte principal
- * mostrada é a mais fiável que corrobora; a primeira a relatar passa para «Outras fontes».
- */
-export function toPublicIncident(row: Row): PublicIncident {
-  const active = row.references.filter((item) => !item.removedAt && item.agreement !== "NAO_RELACIONADO");
-  const stronger = active
-    .filter((item) => (item.agreement === "CORROBORA" || item.agreement === "ACRESCENTA") && !item.duplicateOfUrl && item.linkPublic && SOURCE_TIER_NUMBER[item.sourceTier] < SOURCE_TIER_NUMBER[row.sourceTier])
-    .sort((a, b) => SOURCE_TIER_NUMBER[a.sourceTier] - SOURCE_TIER_NUMBER[b.sourceTier] || a.publicationDate.getTime() - b.publicationDate.getTime())[0];
-  const references = active
-    .filter((item) => item !== stronger)
-    .map((item) => ({ sourceName: item.sourceName, sourceTier: item.sourceTier, url: item.linkPublic ? item.url : null, publicationDate: item.publicationDate, agreement: item.agreement, duplicate: Boolean(item.duplicateOfUrl), firstReport: false }));
-  if (stronger) {
-    references.push({ sourceName: row.sourceName, sourceTier: row.sourceTier, url: row.sourceLinkPublic ? row.sourceUrl : null, publicationDate: row.publicationDate, agreement: "CORROBORA", duplicate: false, firstReport: true });
-  }
-  const main = stronger
-    ? { sourceName: stronger.sourceName, sourceTier: stronger.sourceTier, author: null, sourceUrl: stronger.url, sourceLinkNote: null, publicationDate: stronger.publicationDate }
-    : { sourceName: row.sourceName, sourceTier: row.sourceTier, author: row.author, sourceUrl: row.sourceLinkPublic ? row.sourceUrl : null, sourceLinkNote: row.sourceLinkPublic ? null : row.sourceLinkNote, publicationDate: row.publicationDate };
-  return {
-    id: row.id,
-    category: row.category,
-    tags: row.tags ? row.tags.split(", ") : [],
-    summary: row.summary,
-    ...main,
-    publicationDate: main.publicationDate.toISOString(),
-    verificationStatus: row.verificationStatus,
-    hasConflict: row.hasConflict,
-    phase: row.phase,
-    lastCheckedAt: row.lastCheckedAt.toISOString(),
-    references: references
-      .sort((a, b) => a.publicationDate.getTime() - b.publicationDate.getTime())
-      .map((item) => ({ ...item, publicationDate: item.publicationDate.toISOString() })),
-    incidentStart: row.incidentStart.toISOString(),
-    incidentEnd: row.incidentEnd?.toISOString() ?? null,
-    hasTime: row.hasTime,
-    retrievalDate: row.retrievalDate.toISOString(),
-    freguesiaSlug: row.freguesiaSlug,
-    freguesiaName: row.freguesiaSlug === CONCELHO ? CONCELHO_NAME : (NAMES[row.freguesiaSlug] ?? row.freguesiaSlug),
-    dateIsPublication: row.flags.split(",").includes("data-da-publicacao"),
-    placeName: row.placeName,
-    precision: row.precision,
-    latitude: row.latitude,
-    longitude: row.longitude,
-    radiusM: row.radiusM,
-  };
-}
-
 export async function IncidentSection({ params }: { params: SearchParams }) {
   const now = new Date();
   const range = clampRange(now, params.de, params.ate);
   // Margem de um dia: o corte exato faz-se pelo dia civil de Lisboa.
-  const since = new Date(windowStart(now).getTime() - 86_400_000);
+  const since = windowStart(now);
   const firstDay = windowStartDay(now);
   const [rows, olderThanWindow, archivedRecent, held, lastRun] = await Promise.all([
-    db.incident.findMany({ where: { archivedAt: null, heldForReview: false, incidentStart: { gte: since } }, include: { references: true }, orderBy: [{ incidentStart: "desc" }, { publicationDate: "desc" }] }),
+    db.incident.findMany({ where: publicIncidentWhere(now), include: { references: true }, orderBy: [{ incidentStart: "desc" }, { publicationDate: "desc" }] }),
     db.incident.count({ where: { archivedAt: null, heldForReview: false, incidentStart: { lt: new Date(`${firstDay}T00:00:00Z`) } } }),
     db.incident.count({ where: { archivedAt: { not: null }, incidentStart: { gte: since } } }),
     db.incident.count({ where: { archivedAt: null, heldForReview: true, incidentStart: { gte: since } } }),
     db.dataUpdateLog.findFirst({ where: { sourceId: { in: INCIDENT_SOURCES }, status: { not: "ERRO" } }, orderBy: { retrievalDate: "desc" } }),
   ]);
 
-  const incidents = rows.filter((row) => lisbonDay(row.incidentStart) >= firstDay).map(toPublicIncident);
+  const incidents = rows.filter((row) => !visibilityProblem(row, now)).map(toPublicIncident);
 
   const area = FREGUESIAS.some((item) => item.slug === params.area) ? params.area! : "";
   const tipo = INCIDENT_CATEGORIES.includes(params.tipo as (typeof INCIDENT_CATEGORIES)[number]) ? params.tipo! : "";

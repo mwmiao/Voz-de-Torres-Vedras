@@ -17,7 +17,7 @@ const CM = "https://www.cm-tvedras.pt/documentos/editaisatas/editaiscm";
 
 describe("catálogo de origens", () => {
   it("cada origem ativa tem recolha, e cada recolha tem origem", () => {
-    const active = SOURCE_CATALOG.filter((source) => source.enabled && source.id !== "transcricao-oficial").map((source) => source.id).sort();
+    const active = SOURCE_CATALOG.filter((source) => source.mode === "automatic" && source.id !== "transcricao-oficial").map((source) => source.id).sort();
     expect(Object.keys(COLLECTORS).sort()).toEqual(active);
   });
 
@@ -30,7 +30,7 @@ describe("catálogo de origens", () => {
   });
 
   it("uma origem desativada explica porquê", () => {
-    for (const source of SOURCE_CATALOG.filter((item) => !item.enabled)) expect(source.disabledReason).toBeTruthy();
+    for (const source of SOURCE_CATALOG.filter((item) => item.mode !== "automatic")) expect(source.disabledReason).toBeTruthy();
   });
 });
 

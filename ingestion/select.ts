@@ -1,21 +1,21 @@
 import type { DataSourceState } from "@prisma/client";
-import type { SourceDefinition } from "@/lib/source-catalog";
+import { FREQUENT_GROUPS, type SourceDefinition } from "@/lib/source-catalog";
 
-export type SelectOptions = { only: string[]; disabled: string[]; alertsOnly: boolean };
+/** `frequentOnly`: só os grupos frequentes, avisos e ocorrências. */
+export type SelectOptions = { only: string[]; disabled: string[]; frequentOnly: boolean };
 
 /**
  * Origens a recolher nesta execução. Uma origem desativada no catálogo, sem recolhedor ou desligada
  * por INGEST_DISABLED_SOURCES nunca corre, mesmo quando é pedida pelo nome.
  */
-export function selectSources(catalog: SourceDefinition[], collectors: Record<string, unknown>, { only, disabled, alertsOnly }: SelectOptions): SourceDefinition[] {
+export function selectSources(catalog: SourceDefinition[], collectors: Record<string, unknown>, { only, disabled, frequentOnly }: SelectOptions): SourceDefinition[] {
   return catalog.filter(
     (source) =>
-      source.enabled &&
-      !source.manualOnly &&
+      source.mode === "automatic" &&
       Boolean(collectors[source.id]) &&
       !disabled.includes(source.id) &&
       (only.length === 0 || only.includes(source.id)) &&
-      (!alertsOnly || source.group === "alertas" || source.group === "ocorrencias"),
+      (!frequentOnly || (source.group !== undefined && FREQUENT_GROUPS.includes(source.group))),
   );
 }
 

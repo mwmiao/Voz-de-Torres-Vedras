@@ -33,6 +33,8 @@ const NEWS_HOSTS = [
 
 /** Contas em redes sociais e fontes comunitárias: níveis 3 e 4. */
 export const isUnofficial = (tier: SourceTier) => tier === "CONTA_OFICIAL" || tier === "COMUNITARIA";
+/** Autoridades e imprensa: níveis 1 e 2. */
+export const isReliable = (tier: SourceTier) => !isUnofficial(tier);
 
 /** Conta numa rede social, identificada por plataforma e nome, por exemplo «telegram:gnrportugal». */
 export type AccountEntry = { platform: string; handle: string; name: string; tier: "CONTA_OFICIAL" | "COMUNITARIA" };

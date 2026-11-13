@@ -1,0 +1,377 @@
+/* Estilos do mapa e da lista de ocorrências (página Segurança). Usam os tokens de cores de globals.css. */
+
+.btn-small {
+  min-height: 40px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.875rem;
+}
+
+.chip {
+  min-height: 40px;
+  border: 1px solid #8c9498;
+  border-radius: 999px;
+  background: var(--color-surface);
+  padding: 0.35rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--color-paper);
+}
+
+.chip--active {
+  border-color: var(--color-record);
+  background: var(--color-record);
+  color: #fff;
+}
+
+.chip--active:hover {
+  background: #143a51;
+}
+
+/* Contexto próprio: as camadas do Leaflet não passam por cima do cabeçalho fixo. */
+.incident-map {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  background: var(--color-paper);
+  font: inherit;
+}
+
+.incident-map .leaflet-control-zoom a {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  font-size: 1.25rem;
+  color: var(--color-ink);
+}
+
+.incident-map .leaflet-control-attribution {
+  font-size: 0.7rem;
+}
+
+.incident-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--color-record);
+  box-shadow: 0 0 0 1px var(--color-record), 0 1px 3px rgb(0 0 0 / 0.35);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* O Leaflet põe os ícones em display: block; o número fica centrado no elemento interior. */
+.incident-marker > span {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Grupo de vários lugares: anel duplo, além do número. */
+.incident-marker--cluster {
+  box-shadow: 0 0 0 1px var(--color-record), 0 0 0 5px color-mix(in srgb, var(--color-record) 30%, transparent), 0 1px 3px rgb(0 0 0 / 0.35);
+}
+
+.incident-marker--legend {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.incident-marker--legend .status-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.incident-marker:focus-visible {
+  outline: 3px solid #f5b700;
+  outline-offset: 2px;
+}
+
+.incident-popup {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.incident-popup ul {
+  max-height: min(300px, 45vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.incident-popup p {
+  margin: 0.2rem 0;
+}
+
+.incident-popup__title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.incident-popup__item {
+  border-top: 1px solid var(--color-line);
+  padding: 0.5rem 0;
+}
+
+.incident-popup__item.is-selected {
+  border-left: 3px solid var(--color-record);
+  background: var(--color-record-soft);
+  padding-left: 0.5rem;
+}
+
+.incident-popup__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.5rem;
+}
+
+.incident-popup__type {
+  font-weight: 600;
+}
+
+.incident-popup__status {
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0 0.3rem;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.incident-popup__meta {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.incident-popup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.4rem !important;
+}
+
+.incident-popup__source,
+.incident-popup__list {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  border: 1px solid #8c9498;
+  border-radius: 6px;
+  background: var(--color-surface);
+  padding: 0.3rem 0.7rem;
+  font-weight: 600;
+  color: var(--color-ink) !important;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.leaflet-popup-content {
+  margin: 0.75rem 1rem;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  width: 36px;
+  height: 36px;
+  font-size: 1.4rem;
+  line-height: 36px;
+}
+
+/* ---------- Estados de verificação: forma, ícone e texto, nunca só a cor ---------- */
+
+.status-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.status-badge .status-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.status-badge.status-confirmado {
+  border: 2px solid var(--color-record);
+  background: var(--color-record);
+  color: #fff;
+}
+
+.status-badge.status-reportado {
+  border: 2px solid var(--color-record);
+  background: var(--color-surface);
+  color: var(--color-record);
+}
+
+.status-badge.status-nao-confirmado {
+  border: 2px dashed var(--color-ink);
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+.status-badge.status-em-apuramento {
+  border: 2px solid var(--color-attention);
+  background: var(--color-attention-soft);
+  color: var(--color-attention);
+}
+
+.incident-card.status-nao-confirmado,
+.incident-card.status-em-apuramento {
+  border-style: dashed;
+}
+
+.incident-marker.status-confirmado {
+  background: var(--color-record);
+  color: #fff;
+}
+
+.incident-marker.status-reportado {
+  border: 3px solid var(--color-record);
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  color: var(--color-record);
+}
+
+.incident-marker.status-nao-confirmado {
+  border: 2.5px dashed var(--color-ink);
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  color: var(--color-ink);
+}
+
+/* Os marcadores já são absolutos no Leaflet; o anel e o número posicionam-se em relação a eles. */
+.incident-marker.status-em-apuramento {
+  border: 2.5px solid var(--color-attention);
+  background: var(--color-attention-soft);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  color: var(--color-attention);
+}
+
+/* Anel que pulsa: situação recente ou em curso. Com movimento reduzido, fica um anel fixo. */
+.incident-marker.status-em-apuramento::after {
+  position: absolute;
+  inset: -6px;
+  border: 2px solid var(--color-attention);
+  border-radius: 999px;
+  content: "";
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .incident-marker.status-em-apuramento::after {
+    animation: incident-pulse 1.8s ease-out infinite;
+  }
+}
+
+@keyframes incident-pulse {
+  from {
+    transform: scale(0.85);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+.incident-marker--legend.status-em-apuramento::after {
+  animation: none !important;
+  inset: -4px;
+}
+
+.incident-marker__count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--color-ink);
+  padding: 0 4px;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.incident-marker--cluster {
+  background: var(--color-muted);
+}
+
+.incident-marker--cluster .incident-marker__count {
+  position: static;
+  border: 0;
+  background: transparent;
+  font-size: 0.875rem;
+}
+
+/* Painel do concelho: ocorrências que a fonte não situa em nenhuma freguesia. */
+.incident-concelho {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.5rem;
+  border: 2px dashed var(--color-record);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 0.4rem 0.75rem;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.incident-concelho[hidden] {
+  display: none;
+}
+
+.incident-concelho__count {
+  display: inline-flex;
+  min-width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-record);
+  color: #fff;
+}
+
+.incident-popup .status-badge {
+  margin-bottom: 0.4rem;
+}
+
+.incident-popup__conflict {
+  border: 1px dashed var(--color-muted);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  font-weight: 600;
+}

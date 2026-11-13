@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Incident, IncidentLogAction, IncidentReference, PrismaClient, UpdateStatus } from "@prisma/client";
-import { WINDOW_DAYS } from "@/lib/incidents";
+import { decodeFlags, decodeList, encodeList, WINDOW_DAYS } from "@/lib/incidents";
 import { isUnofficial } from "@/lib/source-tiers";
 import { assessIncident, fingerprintSimilarity, isNearDuplicate, matchClaim, thresholdsFromEnv, type AssessInput, type Thresholds } from "@/lib/verification";
 import { sha256 } from "../fetchers/http";
@@ -44,8 +44,8 @@ export function assessmentInput(incident: Incident, references: IncidentReferenc
     })),
     category: incident.category,
     phase: incident.phase,
-    flags: incident.flags.split(",").filter(Boolean),
-    doubts: incident.doubts.split("; ").filter(Boolean),
+    flags: decodeFlags(incident.flags),
+    doubts: decodeList("doubts", incident.doubts),
     firstReportedAt: incident.firstReportedAt,
     sourceChanged: incident.sourceChanged,
   };
@@ -133,7 +133,7 @@ export async function applyIncident(context: ApplyContext, record: IncidentRecor
   const facts = {
     key: record.sourceUrl,
     category: record.category,
-    tags: record.tags.join(", "),
+    tags: encodeList("tags", record.tags),
     summary: record.summary,
     titleFingerprint: record.titleFingerprint,
     textFingerprint: record.textFingerprint,
@@ -148,8 +148,8 @@ export async function applyIncident(context: ApplyContext, record: IncidentRecor
     incidentEnd: record.incidentEnd,
     hasTime: record.hasTime,
     phase: record.phase,
-    flags: record.flags.join(","),
-    doubts: record.doubts.join("; "),
+    flags: encodeList("flags", record.flags),
+    doubts: encodeList("doubts", record.doubts),
     engagement: record.engagement,
     firstReportedAt: record.publishedAt,
     lastCheckedAt: now,
@@ -182,7 +182,7 @@ const persisted = (assessment: ReturnType<typeof assessIncident>) => ({
   verificationStatus: assessment.verificationStatus,
   hasConflict: assessment.hasConflict,
   reviewStatus: assessment.reviewStatus,
-  reviewReasons: assessment.reviewReasons.join("; "),
+  reviewReasons: encodeList("reviewReasons", assessment.reviewReasons),
   heldForReview: assessment.heldForReview,
   archiveReason: assessment.archiveReason,
 });
@@ -200,7 +200,7 @@ async function updatePrimary(context: ApplyContext, existing: Incident, record: 
   const changed = isUnofficial(existing.sourceTier) && existing.textFingerprint !== "" && fingerprintSimilarity(existing.textFingerprint, record.textFingerprint) < SUBSTANTIAL_CHANGE;
   const data = {
     category: record.category,
-    tags: record.tags.join(", "),
+    tags: encodeList("tags", record.tags),
     summary: record.summary,
     incidentStart: record.incidentStart,
     hasTime: record.hasTime,
@@ -208,8 +208,8 @@ async function updatePrimary(context: ApplyContext, existing: Incident, record: 
     sourceLinkPublic: record.linkPublic,
     sourceLinkNote: record.linkNote,
     engagement: record.engagement,
-    flags: record.flags.join(","),
-    doubts: record.doubts.join("; "),
+    flags: encodeList("flags", record.flags),
+    doubts: encodeList("doubts", record.doubts),
     ...placeFields(record),
     geographicArea: record.placeName,
   };

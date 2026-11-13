@@ -1,9 +1,18 @@
+import type { SourceTier } from "@prisma/client";
+
 /**
  * Catálogo das origens de dados. Só tem metadados, para poder ser lido pelas páginas;
  * a recolha de cada origem está em ingestion/sources.
  */
 
 export type FetchMethod = "API" | "FICHEIRO" | "SCRAPER" | "TRANSCRICAO";
+
+export type SourceGroup = "alertas" | "ocorrencias";
+
+export type SourceMode = "automatic" | "manual" | "disabled";
+
+/** Grupos consultados com mais frequência do que o resto, em `npm run update:alerts`. */
+export const FREQUENT_GROUPS: readonly SourceGroup[] = ["alertas", "ocorrencias"];
 
 export type SourceDefinition = {
   id: string;
@@ -12,15 +21,16 @@ export type SourceDefinition = {
   method: FetchMethod;
   frequencyHours: number;
   /** Avisos urgentes e ocorrências recentes, consultados com mais frequência do que o resto. */
-  group?: "alertas" | "ocorrencias";
-  /** Falso quando não há forma legítima e fiável de recolher automaticamente. */
-  enabled: boolean;
-  /** Nível da fonte nas ocorrências: 1 autoridade, 2 imprensa, 3 conta oficial, 4 comunitária. */
-  tier?: 1 | 2 | 3 | 4;
+  group?: SourceGroup;
+  /**
+   * «automatic»: o recolhedor corre. «manual»: sem recolha automática permitida; entra só por registo
+   * à mão em ocorrencias-curadas. «disabled»: não entra de nenhuma forma.
+   */
+  mode: SourceMode;
+  /** Nível da fonte nas ocorrências. */
+  tier?: SourceTier;
   /** Área geográfica que a fonte cobre. */
   coverage?: string;
-  /** Sem recolha automática, a fonte entra só por registo à mão em ocorrencias-curadas. */
-  manualOnly?: boolean;
   /**
    * Versão do recolhedor. Aumente-a quando a recolha ou a interpretação mudarem: na recolha seguinte,
    * a origem corre logo, sem esperar pela frequência, para que uma atualização não fique horas sem efeito.
@@ -44,7 +54,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.am-tvedras.pt/wp-json/wp/v2/media",
     method: "API",
     frequencyHours: DAY,
-    enabled: true,
+    mode: "automatic",
     description: "Atas, editais, moções, recomendações e relatórios em PDF, desde 2025.",
     validation: "URL oficial, título e data de publicação em cada documento.",
     access: "API pública do site, sem autenticação. Paginada, a 100 registos por página.",
@@ -55,7 +65,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.am-tvedras.pt/wp-json/wp/v2/pages",
     method: "API",
     frequencyHours: DAY,
-    enabled: true,
+    mode: "automatic",
     description: "Editais publicados como páginas, de onde se obtêm as sessões convocadas.",
     validation: "Título com número de edital; sessão só com data reconhecida.",
     access: "API pública do site, sem autenticação. Paginada, a 100 registos por página.",
@@ -66,7 +76,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.am-tvedras.pt/sessoes/info-do-pres-da-camara/",
     method: "FICHEIRO",
     frequencyHours: DAY,
-    enabled: true,
+    mode: "automatic",
     description: "Disponibilidades e dívida, lidas das informações do Presidente da Câmara em PDF.",
     validation: "Falha se o PDF não tiver a data de referência e o total de disponibilidades.",
     access: "PDF públicos, localizados pela API do site.",
@@ -77,7 +87,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.am-tvedras.pt/composicao26/",
     method: "SCRAPER",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Deteta alterações nas páginas de composição e comissões.",
     validation: "Falha se a página não mencionar a mesa e os deputados municipais.",
     access: "Páginas públicas, a respeitar o robots.txt.",
@@ -88,7 +98,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://dados.gov.pt/pt/datasets/contratos-publicos-portal-base-impic-contratos-de-2012-a-2026/",
     method: "API",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Contratos do Município e dos SMAS, a partir dos dados abertos do IMPIC.",
     validation: "Identificador, entidade adjudicante, preço numérico e URL do Portal BASE.",
     access: "API pública de dados.gov.pt, sem chave. Ficheiro anual comprimido, com cerca de 50 MB.",
@@ -99,7 +109,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://dados.gov.pt/pt/datasets/contratos-publicos-portal-base-impic-anuncios-de-2012-a-2026/",
     method: "API",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Concursos públicos e anúncios publicados em Diário da República.",
     validation: "NIF da entidade, número do anúncio e URL do Diário da República.",
     access: "API pública de dados.gov.pt, sem chave.",
@@ -110,7 +120,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://dados.gov.pt/pt/datasets/contratos-publicos-portal-base-impic-modificacoes-contratuais-de-2012-a-2026/",
     method: "API",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Alterações a contratos já registados.",
     validation: "Só entra se o contrato já existir na plataforma.",
     access: "API pública de dados.gov.pt, sem chave.",
@@ -121,7 +131,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.cm-tvedras.pt/documentos/editaisatas/editaiscm",
     method: "SCRAPER",
     frequencyHours: DAY,
-    enabled: true,
+    mode: "automatic",
     description: "Editais e reuniões do Executivo convocadas.",
     validation: "Falha com menos de 100 editais ou sem o formato «Edital N.º».",
     access: "Sem API. Só páginas HTML públicas, a respeitar o robots.txt.",
@@ -132,7 +142,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.cm-tvedras.pt/documentos/editaisatas/atascm",
     method: "SCRAPER",
     frequencyHours: DAY,
-    enabled: true,
+    mode: "automatic",
     description: "Índice de atas e de atas em minuta. Os PDF são ligados, mas não recolhidos.",
     validation: "Falha com menos de 50 atas.",
     access: "Sem API. O robots.txt exclui os PDF, pelo que só se lê o índice.",
@@ -143,7 +153,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.cm-tvedras.pt/documentos/gestao/",
     method: "SCRAPER",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Orçamentos, alterações, execução e prestação de contas. Os PDF são ligados, mas não recolhidos.",
     validation: "Falha com menos de 50 documentos.",
     access: "Sem API. O robots.txt exclui os PDF, pelo que os valores não são extraídos.",
@@ -154,7 +164,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.cm-tvedras.pt/documentos/regulamentos/",
     method: "SCRAPER",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Regulamentos municipais publicados.",
     validation: "Falha com menos de 10 regulamentos.",
     access: "Sem API. Só páginas HTML públicas, a respeitar o robots.txt.",
@@ -165,7 +175,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.cm-tvedras.pt/municipio/camara-municipal/contratacao-publica/",
     method: "SCRAPER",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Anúncios e relatórios de procedimentos em curso.",
     validation: "Falha com menos de 5 procedimentos.",
     access: "Sem API. O robots.txt exclui os PDF, pelo que só se lê a página.",
@@ -176,7 +186,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.cm-tvedras.pt/o/composicaocm",
     method: "SCRAPER",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Eleitos do Executivo, forças políticas e pelouros.",
     validation: "Falha com menos de 7 eleitos.",
     access: "Sem API. Só páginas HTML públicas, a respeitar o robots.txt.",
@@ -187,7 +197,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.ine.pt/xurl/indx/0012261/PT",
     method: "API",
     frequencyHours: WEEK,
-    enabled: true,
+    mode: "automatic",
     description: "Crimes registados pelas autoridades policiais, taxa de criminalidade e população residente do concelho, por ano. Sem dados por freguesia nem por mês.",
     validation: "Falha se o INE não devolver Torres Vedras. Valores ocultos por segredo estatístico ficam assinalados.",
     access: "API pública do INE, sem chave.",
@@ -199,7 +209,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     method: "API",
     frequencyHours: 1,
     group: "alertas",
-    enabled: true,
+    mode: "automatic",
     description: "Avisos amarelos, laranja e vermelhos para o distrito de Lisboa, que inclui Torres Vedras.",
     validation: "Só avisos do distrito de Lisboa, com início e fim válidos.",
     access: "Dados abertos do IPMA, sem chave.",
@@ -211,7 +221,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     method: "SCRAPER",
     frequencyHours: 6,
     group: "alertas",
-    enabled: true,
+    mode: "automatic",
     description: "Trânsito, serviços, encerramentos e outros avisos publicados pelo Município.",
     validation: "Falha com menos de 3 avisos na página.",
     access: "Sem API. Só páginas HTML públicas, a respeitar o robots.txt.",
@@ -223,7 +233,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     method: "SCRAPER",
     frequencyHours: 6,
     group: "alertas",
-    enabled: true,
+    mode: "automatic",
     description: "Avisos e comunicados da Proteção Civil Municipal. Os PDF são ligados, mas não recolhidos.",
     validation: "Falha com menos de 3 comunicados.",
     access: "Sem API. O robots.txt exclui os PDF, pelo que só se lê a página.",
@@ -235,7 +245,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     method: "SCRAPER",
     frequencyHours: 3,
     group: "alertas",
-    enabled: true,
+    mode: "automatic",
     description: "Interrupções programadas, falhas de abastecimento e outros avisos.",
     validation: "Falha se as páginas de avisos deixarem de ter o título esperado.",
     access: "Sem API. Só páginas HTML públicas, a respeitar o robots.txt.",
@@ -247,7 +257,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     method: "TRANSCRICAO",
     frequencyHours: 1,
     group: "alertas",
-    enabled: true,
+    mode: "automatic",
     description: "Avisos oficiais de páginas sem estrutura legível, em prisma/data/alertas-curados.json.",
     validation: "Cada aviso exige uma ligação a um domínio oficial.",
     access: "Não é recolhida automaticamente.",
@@ -255,14 +265,14 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   {
     id: "gnr-comunicados",
     version: 2,
-    tier: 1,
+    tier: "OFICIAL",
     coverage: "Nacional, filtrado para Torres Vedras",
     name: "GNR: comunicados de imprensa",
     baseUrl: "https://www.gnr.pt/comunicados.aspx",
     method: "SCRAPER",
     frequencyHours: 12,
     group: "ocorrencias",
-    enabled: true,
+    mode: "automatic",
     description: "Comunicados nacionais da GNR das duas últimas semanas que referem o concelho de Torres Vedras.",
     validation: "Exige data de publicação, data da ocorrência e uma freguesia ou localidade do concelho. Comunicados que referem vários concelhos ficam por verificar.",
     access: "Sem API. Só a primeira página pública de comunicados e os comunicados recentes; o servidor não publica robots.txt.",
@@ -270,7 +280,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   {
     id: "noticias-ao-minuto",
     version: 2,
-    tier: 2,
+    tier: "IMPRENSA",
     coverage: "Nacional, filtrado para Torres Vedras",
     name: "Notícias ao Minuto: secção País",
     baseUrl: "https://www.noticiasaominuto.com/sitemap.xml",
@@ -278,7 +288,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     // O sitemap só mostra as últimas horas de notícias.
     frequencyHours: 3,
     group: "ocorrencias",
-    enabled: true,
+    mode: "automatic",
     description: "Notícias da secção País, muitas da agência Lusa, sobre ocorrências no concelho de Torres Vedras.",
     validation: "Só abre artigos com indícios de ocorrência no título. Exige data, freguesia ou localidade e a menção ao concelho.",
     access: "Lê o sitemap de notícias e os artigos, que o robots.txt permite. Os feeds RSS estão excluídos e não são usados.",
@@ -293,7 +303,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     // Ficheiro local: lido em cada ciclo, para que um registo novo apareça logo.
     frequencyHours: 0,
     group: "ocorrencias",
-    enabled: true,
+    mode: "automatic",
     description: "Ocorrências e publicações registadas por uma pessoa, em prisma/data/ocorrencias-curadas.json: notícias de sites sem recolha automática e publicações de Facebook, Instagram ou X.",
     validation: "Cada registo exige ligação direta, datas, categoria e área. O nível da fonte decide o estado; publicações com dados pessoais ficam sem ligação pública.",
     access: "Não é recolhida automaticamente.",
@@ -306,8 +316,8 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     method: "API",
     frequencyHours: 3,
     group: "ocorrencias",
-    enabled: true,
-    tier: 2,
+    mode: "automatic",
+    tier: "IMPRENSA",
     coverage: "Torres Vedras e região Oeste",
     description: "Televisão e site regional: notícias locais, decisões municipais, segurança pública, proteção civil e mobilidade no Oeste.",
     validation: "Só artigos com indícios de ocorrência no título e menção ao concelho. Entram como «Reportado», ou «Em apuramento» se a situação estiver em curso.",
@@ -321,8 +331,8 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     method: "API",
     frequencyHours: 3,
     group: "ocorrencias",
-    enabled: true,
-    tier: 2,
+    mode: "automatic",
+    tier: "IMPRENSA",
     coverage: "Concelho de Torres Vedras",
     description: "Rádio local: notícias de Torres Vedras, avisos municipais, obras na estrada, proteção civil e segurança. Também republica comunicados da Câmara, com a autoria preservada.",
     validation: "Como na RTV Oeste. Comunicados da Câmara republicados contam como fonte da Câmara, não como uma redação independente.",
@@ -335,9 +345,8 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     method: "SCRAPER",
     frequencyHours: 12,
     group: "ocorrencias",
-    enabled: false,
-    manualOnly: true,
-    tier: 2,
+    mode: "manual",
+    tier: "IMPRENSA",
     coverage: "Nacional, com tópico sobre Torres Vedras",
     description: "Cobertura nacional sobre Torres Vedras. Fonte secundária: para pormenores locais prevalecem as fontes locais.",
     validation: "Registos à mão, com o nível 2.",
@@ -347,14 +356,14 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   {
     id: "mastodon-torresvedras",
     version: 2,
-    tier: 4,
+    tier: "COMUNITARIA",
     coverage: "Etiquetas sobre Torres Vedras",
     name: "Mastodon: etiquetas de Torres Vedras",
     baseUrl: "https://masto.pt/api/v1/timelines/tag/torresvedras",
     method: "API",
     frequencyHours: 3,
     group: "ocorrencias",
-    enabled: true,
+    mode: "automatic",
     description: "Publicações públicas com as etiquetas configuradas em prisma/data/fontes-comunitarias.json. Fonte de nível 4, ou 3 para contas oficiais registadas.",
     validation: "Só publicações públicas com indícios de ocorrência e menção ao concelho. Entram como «Em apuramento» ou «Não confirmado»; publicações apagadas são arquivadas.",
     access: "API pública da instância, sem chave, a respeitar o robots.txt.",
@@ -362,29 +371,28 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   {
     id: "telegram-canais",
     version: 2,
-    tier: 4,
+    tier: "COMUNITARIA",
     coverage: "Canais configurados",
     name: "Telegram: canais públicos",
     baseUrl: "https://t.me/s/",
     method: "SCRAPER",
     frequencyHours: 3,
     group: "ocorrencias",
-    enabled: true,
+    mode: "automatic",
     description: "Pré-visualização pública dos canais listados em prisma/data/fontes-comunitarias.json. Sem canais configurados, não faz pedidos.",
     validation: "Como no Mastodon. Partilhas de outros canais contam como o canal de origem.",
     access: "Páginas públicas t.me/s/, sem robots.txt publicado.",
   },
   {
     id: "redes-sociais-automaticas",
-    tier: 4,
+    tier: "COMUNITARIA",
     coverage: "Grupos e páginas locais",
-    manualOnly: true,
     name: "Facebook, Instagram e X: recolha automática",
     baseUrl: "https://www.facebook.com/",
     method: "SCRAPER",
     frequencyHours: 3,
     group: "ocorrencias",
-    enabled: false,
+    mode: "manual",
     description: "Grupos locais, páginas comunitárias e contas em redes sociais fechadas.",
     validation: "Por definir.",
     access: "Exigem sessão iniciada e os termos de utilização proíbem a recolha automática.",
@@ -392,15 +400,14 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "badaladas",
-    tier: 2,
+    tier: "IMPRENSA",
     coverage: "Concelho de Torres Vedras",
-    manualOnly: true,
     name: "Badaladas: notícias locais",
     baseUrl: "https://www.badaladas.pt/",
     method: "SCRAPER",
     frequencyHours: 12,
     group: "ocorrencias",
-    enabled: false,
+    mode: "manual",
     description: "Semanário de Torres Vedras.",
     validation: "Por definir.",
     access: "O robots.txt proíbe expressamente a navegação automática sem licença.",
@@ -408,15 +415,14 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "psp-comunicados",
-    tier: 1,
+    tier: "OFICIAL",
     coverage: "Nacional",
-    manualOnly: true,
     name: "PSP: comunicados",
     baseUrl: "https://www.psp.pt/",
     method: "SCRAPER",
     frequencyHours: 12,
     group: "ocorrencias",
-    enabled: false,
+    mode: "manual",
     description: "Comunicados da Polícia de Segurança Pública.",
     validation: "Por definir.",
     access: "As páginas de notícias recusam pedidos automáticos.",
@@ -424,15 +430,14 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
   },
   {
     id: "anepc-ocorrencias",
-    tier: 1,
+    tier: "OFICIAL",
     coverage: "Nacional",
-    manualOnly: true,
     name: "ANEPC: ocorrências em curso",
     baseUrl: "https://prociv.gov.pt/pt/",
     method: "API",
     frequencyHours: 1,
     group: "ocorrencias",
-    enabled: false,
+    mode: "manual",
     description: "Ocorrências de proteção e socorro registadas pela Autoridade Nacional de Emergência e Proteção Civil.",
     validation: "Por definir.",
     access: "O pedido ao robots.txt é rejeitado. Os agregadores não oficiais que republicam estes dados não são usados como fonte.",
@@ -444,7 +449,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://prociv.gov.pt/pt/avisos-a-populacao/",
     method: "SCRAPER",
     frequencyHours: 6,
-    enabled: false,
+    mode: "disabled",
     description: "Avisos nacionais da Autoridade Nacional de Emergência e Proteção Civil.",
     validation: "Por definir.",
     access: "O pedido ao robots.txt é rejeitado pelo servidor, pelo que as regras de acesso não podem ser confirmadas.",
@@ -457,7 +462,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://diariodarepublica.pt/",
     method: "SCRAPER",
     frequencyHours: WEEK,
-    enabled: false,
+    mode: "disabled",
     description: "Atos publicados que afetem o Município.",
     validation: "Por definir.",
     access: "Mapas do site públicos, sem indicação da entidade.",
@@ -470,7 +475,7 @@ export const SOURCE_CATALOG: SourceDefinition[] = [
     baseUrl: "https://www.am-tvedras.pt/sessoes/editais/",
     method: "TRANSCRICAO",
     frequencyHours: 0,
-    enabled: true,
+    mode: "automatic",
     description: "Decisões, votos e valores transcritos de editais e atas. Atualizada por importação ou no seed.",
     validation: "Cada linha exige uma fonte de domínio oficial.",
     access: "Não é recolhida automaticamente.",
@@ -481,15 +486,14 @@ export type SourceStatus = "ATIVA" | "DESATIVADA" | "SO_MANUAL";
 
 export const SOURCE_STATUS_LABEL: Record<SourceStatus, string> = { ATIVA: "Ativa", DESATIVADA: "Desativada", SO_MANUAL: "Só manual" };
 
-/** Ativa: recolha automática. Só manual: entra por registo à mão. Desativada: não entra. */
-export function sourceStatus(source: Pick<SourceDefinition, "enabled" | "manualOnly" | "method">): SourceStatus {
-  if (source.enabled && !source.manualOnly && source.method !== "TRANSCRICAO") return "ATIVA";
-  if (source.manualOnly || source.method === "TRANSCRICAO") return "SO_MANUAL";
-  return "DESATIVADA";
+/** Estado público: uma transcrição corre em cada recolha, mas os registos são feitos à mão. */
+export function sourceStatus(source: Pick<SourceDefinition, "mode" | "method">): SourceStatus {
+  if (source.mode === "disabled") return "DESATIVADA";
+  return source.mode === "manual" || source.method === "TRANSCRICAO" ? "SO_MANUAL" : "ATIVA";
 }
 
-export function frequencyLabel(source: Pick<SourceDefinition, "enabled" | "frequencyHours" | "method" | "manualOnly">): string {
-  if (!source.enabled || source.manualOnly) return "Sem recolha automática";
+export function frequencyLabel(source: Pick<SourceDefinition, "mode" | "frequencyHours" | "method">): string {
+  if (source.mode !== "automatic") return "Sem recolha automática";
   if (source.method === "TRANSCRICAO") return "Lido em cada recolha";
   if (source.frequencyHours === 24) return "Diária";
   if (source.frequencyHours === 168) return "Semanal";

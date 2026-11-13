@@ -8,15 +8,15 @@
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { PrismaClient, type SourceRunStatus } from "@prisma/client";
-import { SOURCE_CATALOG, type SourceDefinition } from "@/lib/source-catalog";
+import { FREQUENT_GROUPS, SOURCE_CATALOG, type SourceDefinition } from "@/lib/source-catalog";
 import { PoliteHttp } from "./fetchers/http";
+import { AFTER_GROUP } from "./groups";
 import { isDue, selectSources } from "./select";
 import { COLLECTORS } from "./sources";
 import type { CollectStats, IngestRecord } from "./types";
 import { deriveAll } from "./derive";
 import { applyRecord, retireMissingOfficials, type ApplyContext } from "./updaters/apply";
 import { closeMissingAlerts } from "./updaters/civic";
-import { logIncident, reconcileIncidents } from "./updaters/incidents";
 import { validateRecord } from "./validators";
 
 type Summary = { id: string; status: SourceRunStatus | "IGNORADA"; created: number; updated: number; unchanged: number; failed: number; message?: string; stats?: CollectStats };
@@ -24,7 +24,7 @@ type Summary = { id: string; status: SourceRunStatus | "IGNORADA"; created: numb
 function readArgs(argv: string[]) {
   const only: string[] = [];
   for (let i = 0; i < argv.length; i += 1) if (argv[i] === "--source" && argv[i + 1]) only.push(argv[i + 1]);
-  return { only, force: argv.includes("--force"), strict: argv.includes("--strict"), alertsOnly: argv.includes("--alertas") };
+  return { only, force: argv.includes("--force"), strict: argv.includes("--strict"), frequentOnly: argv.includes("--alertas") };
 }
 
 async function applyAll(context: ApplyContext, records: IngestRecord[], summary: Summary): Promise<string[]> {
@@ -34,8 +34,6 @@ async function applyAll(context: ApplyContext, records: IngestRecord[], summary:
     if (problems.length > 0) {
       summary.failed += 1;
       errors.push(`${record.kind}: ${problems.join("; ")}`);
-      // Uma ocorrência recusada fica no registo de auditoria, com o motivo.
-      if (record.kind === "incident") await logIncident(context, "REJEITADO", record.sourceUrl, problems.join("; "));
       continue;
     }
     try {
@@ -146,12 +144,12 @@ async function runSource(db: PrismaClient, http: PoliteHttp, source: SourceDefin
 }
 
 async function main() {
-  const { only, force, strict, alertsOnly } = readArgs(process.argv.slice(2));
+  const { only, force, strict, frequentOnly } = readArgs(process.argv.slice(2));
   const disabled = (process.env.INGEST_DISABLED_SOURCES ?? "").split(",").map((item) => item.trim());
   const unknown = only.filter((id) => !COLLECTORS[id]);
   if (unknown.length > 0) throw new Error(`Origem desconhecida: ${unknown.join(", ")}`);
 
-  const selected = selectSources(SOURCE_CATALOG, COLLECTORS, { only, disabled, alertsOnly });
+  const selected = selectSources(SOURCE_CATALOG, COLLECTORS, { only, disabled, frequentOnly });
   const db = new PrismaClient();
   const http = new PoliteHttp();
   const summaries: Summary[] = [];
@@ -164,10 +162,9 @@ async function main() {
       console.log(`${summary.status}${summary.message ? ` (${summary.message.slice(0, 160)})` : ""}`);
       http.saveCache();
     }
-    // Estado, revisão e arquivo das ocorrências, a partir de todas as fontes recolhidas.
-    if (selected.some((source) => source.group === "ocorrencias")) {
-      const reconciled = await reconcileIncidents(db, { now: new Date(), runStartedAt });
-      console.log(`Ocorrências: ${reconciled.updated} reavaliadas, ${reconciled.archived} arquivadas, ${reconciled.pending} por rever.`);
+    for (const group of new Set(selected.flatMap((source) => (source.group ? [source.group] : [])))) {
+      const after = AFTER_GROUP[group];
+      if (after) console.log(await after(db, { startedAt: runStartedAt }));
     }
     const derived = await deriveAll(db);
     console.log(`Derivados: ${derived.summaries} resumos e ${derived.metrics} métricas atualizados.`);
@@ -182,7 +179,7 @@ async function main() {
   // Datas de verificação mudam sempre: só registos novos ou alterados justificam publicar dados.
   if (process.env.GITHUB_OUTPUT) {
     // Os avisos e as ocorrências passam depressa: sozinhos, não justificam um pull request.
-    const alerts = new Set(SOURCE_CATALOG.filter((source) => source.group !== undefined).map((source) => source.id));
+    const alerts = new Set(SOURCE_CATALOG.filter((source) => source.group !== undefined && FREQUENT_GROUPS.includes(source.group)).map((source) => source.id));
     const changed = summaries.some((item) => !alerts.has(item.id) && item.created + item.updated > 0);
     appendFileSync(process.env.GITHUB_OUTPUT, `alterado=${changed}\n`);
   }

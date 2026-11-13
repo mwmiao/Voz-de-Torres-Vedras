@@ -1,6 +1,6 @@
 import type { Agreement, GeoPrecision, IncidentCategory, IncidentPhase, SourceTier, VerificationStatus } from "@prisma/client";
-import { REVIEW_DEFAULTS } from "./incidents";
-import { isUnofficial } from "./source-tiers";
+import { REVIEW_DEFAULTS, type IncidentFlag } from "./incidents";
+import { isReliable, isUnofficial } from "./source-tiers";
 
 const HOUR_MS = 3_600_000;
 
@@ -161,7 +161,7 @@ export function computeVerification(input: VerificationInput): VerificationResul
   const developing = ageHours < thresholds.developingHours || ((input.phase === "EM_CURSO" || input.developing) && ageHours < thresholds.unconfirmedReviewHours);
   const press = new Set(support.filter((source) => source.sourceTier === "IMPRENSA").map((source) => source.independenceKey)).size;
 
-  if (input.primaryTier === "IMPRENSA" || input.primaryTier === "OFICIAL") {
+  if (isReliable(input.primaryTier)) {
     // Uma fonte oficial principal que foi removida deixa de confirmar; a imprensa mantém «Reportado».
     if (press >= 1) return { status: (input.phase === "EM_CURSO" || input.developing) && developing ? "EM_APURAMENTO" : "REPORTADO", hasConflict, officialContradiction };
     return { status: developing ? "EM_APURAMENTO" : "NAO_CONFIRMADO", hasConflict, officialContradiction };
@@ -176,7 +176,7 @@ export function computeVerification(input: VerificationInput): VerificationResul
 export type ReviewInput = {
   primaryTier: SourceTier;
   category: IncidentCategory;
-  flags: string[];
+  flags: IncidentFlag[];
   status: VerificationStatus;
   hasConflict: boolean;
   firstReportedAt: Date;
@@ -214,9 +214,9 @@ export function reviewReasons(input: ReviewInput): string[] {
  * Fica retida até revisão, fora do mapa: uma acusação anónima sobre menores ou violência doméstica
  * pode causar dano mesmo marcada como «Não confirmado».
  */
-export function mustHold(input: Pick<ReviewInput, "primaryTier" | "category" | "flags">, ambiguous: boolean): boolean {
+export function mustHold(input: Pick<ReviewInput, "primaryTier" | "category" | "flags"> & { doubts: string[] }): boolean {
   const unofficial = isUnofficial(input.primaryTier);
-  return ambiguous || (unofficial && (input.category === "VIOLENCIA_DOMESTICA" || input.flags.includes("menores")));
+  return input.doubts.length > 0 || (unofficial && (input.category === "VIOLENCIA_DOMESTICA" || input.flags.includes("menores")));
 }
 
 export function archiveReason(input: {
@@ -253,7 +253,7 @@ export type AssessInput = {
   references: (AssessedSource & { agreement: Agreement; duplicate: boolean; retrievalDate: Date })[];
   category: IncidentCategory;
   phase: IncidentPhase | null;
-  flags: string[];
+  flags: IncidentFlag[];
   /** Dúvidas da extração, com o pormenor: «refere também outros concelhos (loures)». */
   doubts: string[];
   firstReportedAt: Date;
@@ -309,7 +309,7 @@ export function assessIncident(input: AssessInput): Assessment {
     thresholds,
   };
   const reviewReasonsList = [...input.doubts, ...(input.sourceChanged ? ["a publicação original mudou"] : []), ...reviewReasons(reviewInput)];
-  const heldForReview = mustHold(reviewInput, input.doubts.length > 0) && decision?.decision !== "publicar";
+  const heldForReview = mustHold({ ...reviewInput, doubts: input.doubts }) && decision?.decision !== "publicar";
   const archive =
     decision?.decision === "arquivar"
       ? `arquivada na revisão${decision.note ? `: ${decision.note}` : ""}`

@@ -6,16 +6,15 @@ import {
   detectFlags,
   detectPhase,
   detectPlace,
+  placeDoubts,
   fingerprintSimilarity,
-  parseGnrDetail,
-  parseGnrList,
   parseIncidentDate,
-  parseNamArticle,
-  parseNewsSitemap,
   titleFingerprint,
   type IncidentFacts,
   type IncidentSource,
 } from "../ingestion/parsers/ocorrencias";
+import { parseGnrDetail, parseGnrList } from "../ingestion/parsers/gnr";
+import { parseNamArticle, parseNewsSitemap } from "../ingestion/parsers/noticias-ao-minuto";
 import { parseMastodonStatuses, parseTelegramChannel, type MastodonStatus } from "../ingestion/parsers/redes-sociais";
 import type { IncidentRecord } from "../ingestion/types";
 import { validateRecord } from "../ingestion/validators";
@@ -46,9 +45,9 @@ describe("classificação de ocorrências", () => {
 
 describe("área geográfica", () => {
   it("prefere a localidade à freguesia e nunca devolve uma morada", () => {
-    const { place, doubts } = detectPlace("Acidente na Rua Principal, em Santa Cruz, freguesia de Silveira, concelho de Torres Vedras");
-    expect(place).toMatchObject({ placeName: "Santa Cruz", freguesiaSlug: "silveira", precision: "LOCALIDADE", radiusM: 900 });
-    expect(doubts).toEqual([]);
+    const detection = detectPlace("Acidente na Rua Principal, em Santa Cruz, freguesia de Silveira, concelho de Torres Vedras");
+    expect(detection.place).toMatchObject({ placeName: "Santa Cruz", freguesiaSlug: "silveira", precision: "LOCALIDADE", radiusM: 900 });
+    expect(placeDoubts(detection)).toEqual([]);
   });
 
   it("não confunde um apelido com uma freguesia", () => {
@@ -56,8 +55,8 @@ describe("área geográfica", () => {
   });
 
   it("assinala notícias com várias freguesias ou outros concelhos", () => {
-    expect(detectPlace("Furtos em Runa e no Turcifal, Torres Vedras").doubts).toContain("refere mais do que uma freguesia");
-    expect(detectPlace("Furto no Turcifal, Torres Vedras, e na Lourinhã").doubts[0]).toMatch(/outros concelhos/);
+    expect(detectPlace("Furtos em Runa e no Turcifal, Torres Vedras")).toMatchObject({ multipleFreguesias: true });
+    expect(placeDoubts(detectPlace("Furto no Turcifal, Torres Vedras, e na Lourinhã"))).toEqual(["refere também outros concelhos (lourinha)"]);
   });
 });
 
@@ -269,9 +268,9 @@ describe("revisão", () => {
   });
 
   it("retém até revisão casos de redes sociais com menores ou violência doméstica", () => {
-    expect(mustHold({ primaryTier: "COMUNITARIA", category: "VIOLENCIA_DOMESTICA", flags: [] }, false)).toBe(true);
-    expect(mustHold({ primaryTier: "IMPRENSA", category: "VIOLENCIA_DOMESTICA", flags: [] }, false)).toBe(false);
-    expect(mustHold({ primaryTier: "IMPRENSA", category: "FURTO", flags: [] }, true)).toBe(true);
+    expect(mustHold({ primaryTier: "COMUNITARIA", category: "VIOLENCIA_DOMESTICA", flags: [], doubts: [] })).toBe(true);
+    expect(mustHold({ primaryTier: "IMPRENSA", category: "VIOLENCIA_DOMESTICA", flags: [], doubts: [] })).toBe(false);
+    expect(mustHold({ primaryTier: "IMPRENSA", category: "FURTO", flags: [], doubts: ["refere mais do que uma freguesia"] })).toBe(true);
   });
 });
 

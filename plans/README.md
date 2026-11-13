@@ -8,10 +8,10 @@ Audit scope: standard depth, hotspot-weighted, done directly without subagents. 
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001  | Harden the ingestion HTTP cache against corruption | P1 | S | — | TODO |
-| 002  | Browser smoke test for the Segurança map, in CI | P1 | M | — | TODO |
-| 003  | Content-Security-Policy that keeps the map working | P2 | M | 002 | TODO |
-| 004  | Split `ingestion/sources/index.ts` by domain | P3 | M | — | TODO |
+| 001  | Harden the ingestion HTTP cache against corruption | P1 | S | — | DONE |
+| 002  | Browser smoke test for the Segurança map, in CI | P1 | M | — | DONE |
+| 003  | Content-Security-Policy that keeps the map working | P2 | M | 002 | DONE |
+| 004  | Split `ingestion/sources/index.ts` by domain | P3 | M | — | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

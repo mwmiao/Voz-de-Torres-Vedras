@@ -37,4 +37,20 @@ test.describe("Segurança", () => {
     await page.getByLabel("Tipo de ocorrência").selectOption("FURTO");
     await expect(page.getByText("0 ocorrências visíveis")).toBeVisible();
   });
+
+  test("envia Content-Security-Policy sem violações", async ({ page }) => {
+    await page.addInitScript(() => {
+      const w = window as unknown as { __csp?: string[] };
+      document.addEventListener("securitypolicyviolation", (event) => {
+        w.__csp = [...(w.__csp ?? []), `${event.violatedDirective} ${event.blockedURI}`];
+      });
+    });
+    const response = await page.goto("/seguranca");
+    expect(response?.headers()["content-security-policy"]).toBeTruthy();
+    await page.locator(".leaflet-marker-icon").click({ timeout: 15_000 });
+    await expect(page.locator(".incident-popup")).toBeVisible();
+    await page.locator(".incident-popup__list").click();
+    const violations = await page.evaluate(() => (window as unknown as { __csp?: string[] }).__csp ?? []);
+    expect(violations).toEqual([]);
+  });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assembleIncident,
   buildIncident,
   classifyIncident,
   detectFlags,
@@ -12,13 +13,15 @@ import {
   parseNamArticle,
   parseNewsSitemap,
   titleFingerprint,
+  type IncidentFacts,
+  type IncidentSource,
 } from "../ingestion/parsers/ocorrencias";
 import { parseMastodonStatuses, parseTelegramChannel, type MastodonStatus } from "../ingestion/parsers/redes-sociais";
 import type { IncidentRecord } from "../ingestion/types";
 import { validateRecord } from "../ingestion/validators";
-import { clampRange, filterIncidents, isInRange } from "../src/lib/incidents";
+import { clampRange, CONCELHO, filterIncidents, isInRange } from "../src/lib/incidents";
 import { classifySourceTier, detectPersonalData, independenceKey, isArchivable } from "../src/lib/source-tiers";
-import { archiveReason, computeVerification, isNearDuplicate, matchClaim, mustHold, reviewReasons, thresholdsFromEnv, type Candidate, type SourceLink } from "../src/lib/verification";
+import { archiveReason, assessIncident, computeVerification, isNearDuplicate, matchClaim, mustHold, reviewReasons, thresholdsFromEnv, type Candidate, type SourceLink } from "../src/lib/verification";
 
 // Segunda-feira, 2 de novembro de 2026.
 const now = new Date("2026-11-02T15:00:00Z");
@@ -342,5 +345,71 @@ describe("fontes", () => {
   it("lê título, data, autor e texto de um artigo", () => {
     const html = `<script type="application/ld+json">{"@type":"NewsArticle","headline":"Furto em Runa","datePublished":"2026-11-02T10:00:00+00:00","author":{"name":"Lusa"}}</script><div class="article-content"><p>Primeiro parágrafo.</p><p>Leia Também: outra</p><p>Segundo.</p></div>`;
     expect(parseNamArticle(html)).toEqual({ title: "Furto em Runa", text: "Primeiro parágrafo. Segundo.", published: new Date("2026-11-02T10:00:00Z"), author: "Lusa" });
+  });
+});
+
+describe("montagem única de relatos", () => {
+  const place = { freguesiaSlug: "silveira", placeName: "Santa Cruz", precision: "LOCALIDADE" as const, latitude: 39.1351, longitude: -9.3817, radiusM: 900 };
+  const facts = (patch: Partial<IncidentFacts> = {}): IncidentFacts => ({
+    category: "FURTO", tags: [], place, incidentStart: new Date("2026-11-01T08:00:00Z"), hasTime: true, phase: null, flags: [], doubts: [], denies: false, personalData: [], ...patch,
+  });
+  const source = (patch: Partial<IncidentSource> = {}): IncidentSource => ({ url: "https://www.facebook.com/x/posts/1", sourceName: "Página local", sourceTier: "COMUNITARIA", publishedAt: published, ...patch });
+
+  it("aplica as mesmas regras a artigos e a registos à mão", () => {
+    // Violência doméstica: só a freguesia, venha de onde vier.
+    expect(assembleIncident(source({ sourceTier: "IMPRENSA", url: "https://www.badaladas.pt/a" }), facts({ category: "VIOLENCIA_DOMESTICA" }), now)).toMatchObject({ precision: "FREGUESIA", placeName: "Silveira" });
+    // Área pública só de fontes fiáveis.
+    const zone = { ...place, placeName: "Praia de Porto Novo", precision: "AREA_PUBLICA" as const, freguesiaSlug: "maceira", radiusM: 300 };
+    expect(assembleIncident(source(), facts({ place: zone }), now)).toMatchObject({ precision: "FREGUESIA", placeName: "Maceira" });
+    expect(assembleIncident(source({ sourceTier: "OFICIAL", url: "https://www.cm-tvedras.pt/a" }), facts({ place: zone }), now)).toMatchObject({ precision: "AREA_PUBLICA" });
+    // Dados pessoais em fontes não oficiais: a ligação não é publicada.
+    expect(assembleIncident(source(), facts({ personalData: ["idade"] }), now)).toMatchObject({ linkPublic: false, linkNote: expect.stringMatching(/dados pessoais/) });
+  });
+
+  it("recusa um registo comunitário sem data ou só com o concelho, como num artigo", () => {
+    expect(assembleIncident(source(), facts({ incidentStart: null }), now)).toMatchObject({ kind: "incident-rejected", reason: "sem data da ocorrência" });
+    const concelho = { freguesiaSlug: CONCELHO, placeName: "Concelho de Torres Vedras", precision: "CONCELHO" as const, latitude: 39.1049, longitude: -9.2604, radiusM: null };
+    expect(assembleIncident(source(), facts({ place: concelho }), now)).toMatchObject({ kind: "incident-rejected" });
+    expect(assembleIncident(source({ sourceTier: "IMPRENSA", url: "https://www.jn.pt/a" }), facts({ place: concelho, incidentStart: null }), now)).toMatchObject({ kind: "incident", flags: ["data-da-publicacao"], hasTime: false });
+  });
+
+  it("sem texto, usa o tipo e o lugar final para comparar com outras fontes", () => {
+    const vd = assembleIncident(source({ sourceTier: "IMPRENSA", url: "https://www.badaladas.pt/a" }), facts({ category: "VIOLENCIA_DOMESTICA" }), now) as IncidentRecord;
+    expect(vd.titleFingerprint).toBe(titleFingerprint("VIOLENCIA_DOMESTICA Silveira"));
+  });
+});
+
+describe("avaliação única", () => {
+  const base = {
+    primary: { sourceTier: "IMPRENSA" as const, independenceKey: "rtvon.pt", engagement: 0, removed: false },
+    references: [],
+    category: "FURTO" as const,
+    phase: null,
+    flags: [],
+    doubts: [],
+    firstReportedAt: new Date(now.getTime() - 30 * 3_600_000),
+    sourceChanged: false,
+    now,
+  };
+
+  it("guarda o pormenor das dúvidas e retém até revisão", () => {
+    expect(assessIncident({ ...base, doubts: ["refere também outros concelhos (loures)"] })).toMatchObject({
+      verificationStatus: "REPORTADO",
+      heldForReview: true,
+      reviewStatus: "PENDENTE",
+      reviewReasons: ["refere também outros concelhos (loures)"],
+    });
+  });
+
+  it("liberta com a decisão «publicar» e arquiva com «arquivar»", () => {
+    const doubts = ["refere mais do que uma freguesia"];
+    expect(assessIncident({ ...base, doubts, decision: { decision: "publicar" } })).toMatchObject({ heldForReview: false, reviewStatus: "REVISTA" });
+    expect(assessIncident({ ...base, decision: { decision: "arquivar", note: "não é uma ocorrência" } }).archiveReason).toBe("arquivada na revisão: não é uma ocorrência");
+  });
+
+  it("dá o mesmo resultado a uma ocorrência nova e à mesma ocorrência na reconciliação", () => {
+    const fresh = assessIncident(base);
+    expect(assessIncident({ ...base, runStartedAt: now })).toEqual(fresh);
+    expect(fresh).toEqual({ verificationStatus: "REPORTADO", hasConflict: false, reviewStatus: "NAO_NECESSARIA", reviewReasons: [], heldForReview: false, archiveReason: null });
   });
 });

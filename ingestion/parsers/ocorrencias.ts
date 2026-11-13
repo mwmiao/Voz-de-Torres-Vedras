@@ -1,4 +1,4 @@
-import type { GeoPrecision, IncidentCategory, IncidentPhase, SourceTier } from "@prisma/client";
+import type { Agreement, IncidentCategory, IncidentPhase, SourceTier } from "@prisma/client";
 import * as cheerio from "cheerio";
 import { FREGUESIAS } from "@/lib/alerts";
 import { CONCELHO, CONCELHO_NAME, CONCELHO_POINT, FREGUESIA_POINTS, INCIDENT_CATEGORY_LABEL, LOCALIDADES, PRECISION_RADIUS_M, WINDOW_DAYS } from "@/lib/incidents";
@@ -7,7 +7,7 @@ import { detectPersonalData, independenceKey, isArchivable } from "@/lib/source-
 import { fingerprintSimilarity } from "@/lib/verification";
 import { sha256 } from "../fetchers/http";
 import { cleanText, lisbonDate, MONTH_PATTERN, monthNumber } from "../normalizers";
-import type { IncidentRecord, IncidentRejection } from "../types";
+import type { IncidentPlace, IncidentRecord, IncidentRejection } from "../types";
 
 const DAY_MS = 86_400_000;
 
@@ -68,29 +68,21 @@ const mentionsAsPlace = (key: string, pattern: string) => new RegExp(`(?:^|[^a-z
 
 export const mentionsConcelho = (text: string) => mentions(searchKey(text), "torres vedras");
 
-export type Place = {
-  freguesiaSlug: string;
-  placeName: string;
-  precision: GeoPrecision;
-  latitude: number;
-  longitude: number;
-  radiusM: number | null;
-};
 
 const FREGUESIA_NAME = Object.fromEntries(FREGUESIAS.map((item) => [item.slug, item.name]));
 
-export function freguesiaPlace(slug: string): Place | null {
+export function freguesiaPlace(slug: string): IncidentPlace | null {
   const point = FREGUESIA_POINTS[slug];
   if (!point) return null;
   return { freguesiaSlug: slug, placeName: FREGUESIA_NAME[slug], precision: "FREGUESIA", latitude: point[0], longitude: point[1], radiusM: null };
 }
 
 /** Só o concelho: o ponto serve para ancorar o painel do mapa, e a área é o concelho inteiro. */
-export function concelhoPlace(): Place {
+export function concelhoPlace(): IncidentPlace {
   return { freguesiaSlug: CONCELHO, placeName: CONCELHO_NAME, precision: "CONCELHO", latitude: CONCELHO_POINT[0], longitude: CONCELHO_POINT[1], radiusM: null };
 }
 
-export function localidadePlace(name: string): Place | null {
+export function localidadePlace(name: string): IncidentPlace | null {
   const item = LOCALIDADES.find((localidade) => localidade.name === name);
   if (!item) return null;
   return { freguesiaSlug: item.freguesia, placeName: item.name, precision: "LOCALIDADE", latitude: item.point[0], longitude: item.point[1], radiusM: PRECISION_RADIUS_M.LOCALIDADE };
@@ -100,10 +92,10 @@ export function localidadePlace(name: string): Place | null {
  * Lugar mais específico que o texto nomeia, nunca uma morada. Devolve também as dúvidas:
  * com mais do que uma freguesia, ou com outros concelhos, o registo fica por verificar.
  */
-export function detectPlace(text: string): { place: Place | null; doubts: string[]; concelho: boolean } {
+export function detectPlace(text: string): { place: IncidentPlace | null; doubts: string[]; concelho: boolean } {
   const key = searchKey(text).replaceAll("-", " ");
   const concelho = mentions(key, "torres vedras");
-  const found: { index: number; place: Place }[] = [];
+  const found: { index: number; place: IncidentPlace }[] = [];
   for (const localidade of LOCALIDADES) {
     for (const pattern of localidade.patterns) {
       // A cidade só conta com expressões como «cidade de Torres Vedras», que já incluem a preposição.
@@ -235,14 +227,14 @@ const SUMMARY_LEAD: Record<IncidentCategory, string> = {
  * Resumo feito de um modelo: nunca copia nomes, idades, moradas, matrículas ou outros pormenores.
  * Diz só o tipo e a área; o estado de verificação aparece ao lado.
  */
-export function neutralSummary(category: IncidentCategory, place: Pick<Place, "placeName" | "precision">): string {
+export function neutralSummary(category: IncidentCategory, place: Pick<IncidentPlace, "placeName" | "precision">): string {
   const where =
     place.precision === "CONCELHO" ? "no concelho de Torres Vedras, sem freguesia indicada na fonte" : place.precision === "FREGUESIA" ? `na área da freguesia de ${place.placeName}` : `na zona de ${place.placeName}`;
   return `${SUMMARY_LEAD[category]} ${where}.`;
 }
 
 /** Afirmação estruturada de uma fonte: tipo, área e dia. Substitui qualquer excerto do texto original. */
-export function structuredClaim(category: IncidentCategory, place: Pick<Place, "placeName">, start: Date, denies: boolean): string {
+export function structuredClaim(category: IncidentCategory, place: Pick<IncidentPlace, "placeName">, start: Date, denies: boolean): string {
   return `${denies ? "Desmente: " : ""}${INCIDENT_CATEGORY_LABEL[category]} · ${place.placeName} · ${start.toISOString().slice(0, 10)}`;
 }
 
@@ -256,100 +248,159 @@ export function titleFingerprint(title: string): string {
 
 export { fingerprintSimilarity };
 
-// ---------- Construção do registo ----------
+// ---------- Factos e montagem ----------
+//
+// Um relato passa por duas etapas. A extração lê o texto e devolve factos: tipo, lugar, data, indícios.
+// A montagem junta os factos à fonte e aplica todas as regras de política, as mesmas para artigos,
+// publicações e registos à mão: privacidade, nível do concelho, data em falta, ligação publicada.
 
-export type ArticleInput = {
+/** O que se sabe de uma ocorrência, venha de um texto ou de um registo à mão. */
+export type IncidentFacts = {
+  category: IncidentCategory;
+  tags: string[];
+  place: IncidentPlace;
+  /** Nula quando a fonte não indica a data da ocorrência. */
+  incidentStart: Date | null;
+  incidentEnd?: Date | null;
+  hasTime: boolean;
+  phase: IncidentPhase | null;
+  flags: string[];
+  doubts: string[];
+  denies: boolean;
+  /** Dados pessoais encontrados na publicação, ou declarados por quem a registou. */
+  personalData: string[];
+  /**
+   * Texto usado só para as impressões digitais: nunca é guardado. Sem texto, como num registo à mão
+   * sem título, usa-se o tipo e o lugar final.
+   */
+  fingerprint?: { title: string; full: string };
+};
+
+/** De onde vem o relato. */
+export type IncidentSource = {
   url: string;
+  sourceName: string;
+  sourceTier: SourceTier;
+  publishedAt: Date;
+  author?: string | null;
+  articleCategory?: string | null;
+  /** Conta em rede social, quando a fonte é uma publicação. */
+  account?: { platform: string; handle: string } | null;
+  engagement?: number;
+  /** Ligação explícita a uma ocorrência existente, nos registos à mão. */
+  incidentKey?: string;
+  agreement?: Agreement;
+};
+
+const reject = (sourceUrl: string, reason: string): IncidentRejection => ({ kind: "incident-rejected", sourceUrl, reason });
+
+const isReliable = (tier: SourceTier) => tier === "OFICIAL" || tier === "IMPRENSA";
+
+/** Políticas de lugar: violência doméstica só ao nível da freguesia, áreas públicas só de fontes fiáveis. */
+function safePlace(place: IncidentPlace, category: IncidentCategory, tier: SourceTier): IncidentPlace {
+  // Em violência doméstica, uma localidade pequena pode identificar as pessoas: fica a freguesia.
+  const tooPrecise = category === "VIOLENCIA_DOMESTICA" || (place.precision === "AREA_PUBLICA" && !isReliable(tier));
+  if (!tooPrecise || place.precision === "FREGUESIA" || place.precision === "CONCELHO") return place;
+  return freguesiaPlace(place.freguesiaSlug) ?? place;
+}
+
+/** Junta factos e fonte num relato pronto a gravar, ou explica porque é recusado. */
+export function assembleIncident(source: IncidentSource, facts: IncidentFacts, now: Date): IncidentRecord | IncidentRejection {
+  const reliable = isReliable(source.sourceTier);
+  // Autoridades e imprensa podem ficar ao nível do concelho e sem data; redes sociais não.
+  if (facts.place.precision === "CONCELHO" && !reliable) return reject(source.url, "sem área geográfica utilizável: a fonte só indica o concelho");
+  if (!facts.incidentStart && !reliable) return reject(source.url, "sem data da ocorrência");
+  const start = facts.incidentStart ?? source.publishedAt;
+  if (start.getTime() < now.getTime() - (WINDOW_DAYS + 1) * DAY_MS) return reject(source.url, `ocorrência com mais de ${WINDOW_DAYS} dias`);
+
+  const place = safePlace(facts.place, facts.category, source.sourceTier);
+  const fingerprint = facts.fingerprint ?? { title: `${facts.category} ${place.placeName}`, full: `${facts.category} ${place.placeName}` };
+  // Em redes sociais e fontes comunitárias, a ligação só é publicada sem dados pessoais e quando pode ser arquivada.
+  const linkNote = !isArchivable(source.url)
+    ? "Ligação não publicada: a publicação não pode ser arquivada."
+    : !reliable && facts.personalData.length > 0
+      ? "Ligação não publicada: a publicação original contém dados pessoais."
+      : null;
+
+  return {
+    kind: "incident",
+    sourceUrl: source.url,
+    sourceName: source.sourceName,
+    sourceTier: source.sourceTier,
+    independenceKey: independenceKey(source.url, source.author, source.account),
+    author: source.author ?? null,
+    articleCategory: source.articleCategory ?? null,
+    publishedAt: source.publishedAt,
+    incidentStart: start,
+    incidentEnd: facts.incidentEnd ?? null,
+    hasTime: facts.incidentStart ? facts.hasTime : false,
+    category: facts.category,
+    tags: facts.tags,
+    summary: neutralSummary(facts.category, place),
+    claim: structuredClaim(facts.category, place, start, facts.denies),
+    titleFingerprint: titleFingerprint(fingerprint.title),
+    textFingerprint: titleFingerprint(fingerprint.full),
+    phase: facts.phase,
+    denies: facts.denies,
+    flags: [...facts.flags, ...(facts.incidentStart ? [] : ["data-da-publicacao"])],
+    doubts: facts.doubts,
+    linkPublic: linkNote === null,
+    linkNote,
+    engagement: source.engagement ?? 0,
+    incidentKey: source.incidentKey,
+    agreement: source.agreement,
+    ...place,
+  };
+}
+
+export type ArticleInput = Omit<IncidentSource, "publishedAt" | "incidentKey" | "agreement"> & {
   /** Para publicações sem título, a primeira frase. */
   title: string;
   text: string;
   published: Date | null;
-  sourceName: string;
-  sourceTier: SourceTier;
-  author?: string | null;
-  /** Conta em rede social, quando a fonte é uma publicação. */
-  account?: { platform: string; handle: string } | null;
-  engagement?: number;
-  /** Secção ou categoria do artigo na fonte. */
-  articleCategory?: string | null;
   /** A fonte só publica sobre Torres Vedras, como uma categoria local: a menção ao concelho é implícita. */
   concelhoImplied?: boolean;
   now: Date;
 };
 
-const reject = (sourceUrl: string, reason: string): IncidentRejection => ({ kind: "incident-rejected", sourceUrl, reason });
-
 /** Primeira frase de uma publicação, usada como título. */
 export const firstSentence = (text: string) => cleanText(text).split(/(?<=[.!?])\s/)[0].slice(0, 160);
 
-/** Transforma um artigo ou publicação num relato, ou explica porque foi recusado. */
+/** Lê os factos de um artigo ou publicação e monta o relato, ou explica porque foi recusado. */
 export function buildIncident(input: ArticleInput): IncidentRecord | IncidentRejection {
-  const { url, title, text, published, sourceTier, sourceName, now } = input;
+  const { url, title, text, published, now } = input;
   const full = `${title}. ${text}`;
   if (!published) return reject(url, "sem data de publicação");
   if (NOT_AN_INCIDENT.test(searchKey(title))) return reject(url, "não descreve uma ocorrência (campanha, balanço ou iniciativa)");
   const classification = classifyIncident(title, text);
   if (!classification) return reject(url, "não descreve uma ocorrência reconhecida");
-  const { place: detected, doubts, concelho } = detectPlace(full);
+  const { place, doubts, concelho } = detectPlace(full);
   // Há lugares com o mesmo nome noutros concelhos, como Maceira ou Santa Cruz.
   if (!concelho && !input.concelhoImplied) return reject(url, "não refere o concelho de Torres Vedras");
-  // Autoridades e imprensa podem ficar ao nível do concelho; redes sociais precisam de uma freguesia ou localidade.
-  const reliable = sourceTier === "OFICIAL" || sourceTier === "IMPRENSA";
-  let located = detected;
-  if (!located) {
-    // Hospitais, tribunais e destacamentos com sede em Torres Vedras aparecem em notícias de outros concelhos.
-    const elsewhere = doubts.find((doubt) => doubt.startsWith("refere também outros concelhos"));
-    if (elsewhere) return reject(url, `a ocorrência é noutro concelho: ${elsewhere.replace("refere também outros concelhos ", "")}`);
-    if (!reliable) return reject(url, "sem área geográfica utilizável: a fonte só indica o concelho");
-    located = concelhoPlace();
-  }
-  // Sem data da ocorrência, autoridades e imprensa ficam com a data de publicação, assinalada como tal.
-  const parsedDate = parseIncidentDate(full, published);
-  if (!parsedDate && !reliable) return reject(url, "sem data da ocorrência");
-  const date = parsedDate ?? { start: published, hasTime: false };
-  if (date.start.getTime() < now.getTime() - (WINDOW_DAYS + 1) * DAY_MS) return reject(url, `ocorrência com mais de ${WINDOW_DAYS} dias`);
+  // Hospitais, tribunais e destacamentos com sede em Torres Vedras aparecem em notícias de outros concelhos.
+  const elsewhere = doubts.find((doubt) => doubt.startsWith("refere também outros concelhos"));
+  if (!place && elsewhere) return reject(url, `a ocorrência é noutro concelho: ${elsewhere.replace("refere também outros concelhos ", "")}`);
+  const date = parseIncidentDate(full, published);
+  const flags = detectFlags(full);
+  const unofficial = !isReliable(input.sourceTier);
 
-  // Em violência doméstica, uma localidade pequena pode identificar as pessoas: fica a freguesia.
-  const place = classification.category === "VIOLENCIA_DOMESTICA" && located.precision !== "FREGUESIA" && located.precision !== "CONCELHO" ? freguesiaPlace(located.freguesiaSlug)! : located;
-  const doubtsAll = [...doubts];
-  if (!classification.confident) doubtsAll.push("a categoria só foi encontrada no corpo do texto");
-  const flags = [...detectFlags(full), ...(parsedDate ? [] : ["data-da-publicacao"])];
-  const denies = flags.includes("desmentido");
-
-  // Em redes sociais e fontes comunitárias, a ligação só é publicada sem dados pessoais e quando pode ser arquivada.
-  const unofficial = sourceTier === "CONTA_OFICIAL" || sourceTier === "COMUNITARIA";
-  const personal = unofficial ? detectPersonalData(full) : [];
-  const archivable = isArchivable(url);
-  const linkNote = !archivable ? "Ligação não publicada: a publicação não pode ser arquivada." : personal.length > 0 ? "Ligação não publicada: a publicação original contém dados pessoais." : null;
-
-  return {
-    kind: "incident",
-    sourceUrl: url,
-    sourceName,
-    sourceTier,
-    independenceKey: independenceKey(url, input.author, input.account),
-    author: input.author ?? null,
-    articleCategory: input.articleCategory ?? null,
-    publishedAt: published,
-    incidentStart: date.start,
-    incidentEnd: null,
-    hasTime: date.hasTime,
-    category: classification.category,
-    tags: classification.tags,
-    summary: neutralSummary(classification.category, place),
-    claim: structuredClaim(classification.category, place, date.start, denies),
-    titleFingerprint: titleFingerprint(title),
-    textFingerprint: titleFingerprint(full),
-    phase: detectPhase(full, classification.category),
-    denies,
-    flags,
-    doubts: doubtsAll,
-    linkPublic: linkNote === null,
-    linkNote,
-    engagement: input.engagement ?? 0,
-    removed: false,
-    ...place,
-  };
+  return assembleIncident(
+    { ...input, publishedAt: published },
+    {
+      category: classification.category,
+      tags: classification.tags,
+      place: place ?? concelhoPlace(),
+      incidentStart: date?.start ?? null,
+      hasTime: date?.hasTime ?? false,
+      phase: detectPhase(full, classification.category),
+      flags,
+      doubts: classification.confident ? doubts : [...doubts, "a categoria só foi encontrada no corpo do texto"],
+      denies: flags.includes("desmentido"),
+      personalData: unofficial ? detectPersonalData(full) : [],
+      fingerprint: { title, full },
+    },
+    now,
+  );
 }
 
 // ---------- GNR ----------

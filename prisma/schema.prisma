@@ -761,6 +761,8 @@ model Incident {
   hasConflict        Boolean            @default(false)
   // Indícios no texto, sem o texto: «grave», «menores», «desmentido».
   flags              String             @default("")
+  // Dúvidas da extração, com o pormenor, separadas por «; ». Com alguma, a ocorrência fica retida até revisão.
+  doubts             String             @default("")
   engagement         Int                @default(0)
   firstReportedAt    DateTime           @map("first_reported_at")
   lastCheckedAt      DateTime           @map("last_checked_at")

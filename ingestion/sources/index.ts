@@ -22,8 +22,8 @@ import {
   parseRegulamentos,
 } from "../parsers/camara";
 import type { Agreement, GeoPrecision, IncidentCategory, IncidentPhase, SourceTier } from "@prisma/client";
-import { classifySourceTier, independenceKey, isArchivable, type AccountEntry } from "@/lib/source-tiers";
-import { StructureError, type AlertRecord, type Collected, type IngestRecord } from "../types";
+import { classifySourceTier, type AccountEntry } from "@/lib/source-tiers";
+import { StructureError, type AlertRecord, type Collected, type IncidentPlace, type IngestRecord } from "../types";
 import { assertContains, assertMinimum } from "../validators";
 import {
   DEFAULT_ACTIVE_DAYS,
@@ -38,6 +38,7 @@ import {
   type IpmaWarning,
 } from "../parsers/alertas";
 import {
+  assembleIncident,
   buildIncident,
   concelhoPlace,
   firstSentence,
@@ -51,10 +52,7 @@ import {
   parseGnrDetail,
   parseGnrList,
   parseNamArticle,
-  neutralSummary,
   parseNewsSitemap,
-  structuredClaim,
-  titleFingerprint,
 } from "../parsers/ocorrencias";
 import { parseRssFeed } from "../parsers/noticias-rss";
 import { parseMastodonStatuses, parseTelegramChannel, type MastodonStatus, type SocialPost } from "../parsers/redes-sociais";
@@ -492,7 +490,7 @@ const collectMastodon: Collector = async (input) => {
       const [post] = parseMastodonStatuses([data]);
       if (post) records.push(socialPost(post, "mastodon", config, input.now));
     } catch (error) {
-      if (error instanceof Error && /\(404\)|\(410\)/.test(error.message)) records.push(removedPost(key));
+      if (error instanceof Error && /\(404\)|\(410\)/.test(error.message)) records.push({ kind: "incident-removed", sourceUrl: key });
       else throw error;
     }
   }
@@ -511,15 +509,6 @@ const collectTelegram: Collector = async (input) => {
   }
   return { records };
 };
-
-/** Marca uma publicação como removida: só a ligação conta, os outros campos não são usados. */
-function removedPost(url: string): IngestRecord {
-  return {
-    kind: "incident", sourceUrl: url, sourceName: "", sourceTier: "COMUNITARIA", independenceKey: "", author: null, publishedAt: null, incidentStart: new Date(0), incidentEnd: null,
-    hasTime: false, category: "OUTRO", tags: [], summary: "", claim: "", titleFingerprint: "", textFingerprint: "", phase: null, denies: false, flags: [], doubts: [],
-    linkPublic: false, linkNote: null, engagement: 0, removed: true, freguesiaSlug: null, placeName: null, precision: null, latitude: null, longitude: null, radiusM: null,
-  };
-}
 
 type CuratedIncident = {
   sourceUrl: string;
@@ -557,7 +546,20 @@ type CuratedIncident = {
   engagement?: number;
 };
 
-const collectCuratedIncidents: Collector = async () => {
+/** Lugar de um registo à mão: concelho, localidade conhecida, zona com ponto próprio, ou freguesia. */
+function curatedPlace(item: CuratedIncident): IncidentPlace | null {
+  if (item.freguesia === CONCELHO) return concelhoPlace();
+  const freguesia = freguesiaPlace(item.freguesia);
+  if (item.precision === "LOCALIDADE" && item.placeName) return localidadePlace(item.placeName) ?? freguesia;
+  const { precision, placeName, latitude, longitude } = item;
+  if ((precision === "AREA_PUBLICA" || precision === "ZONA_APROXIMADA") && freguesia && placeName && latitude !== undefined && longitude !== undefined) {
+    return { freguesiaSlug: freguesia.freguesiaSlug, placeName, precision, latitude, longitude, radiusM: item.radiusM ?? PRECISION_RADIUS_M[precision] };
+  }
+  return freguesia;
+}
+
+/** Ocorrências registadas por uma pessoa: dão os factos diretamente e passam pela mesma montagem dos artigos. */
+const collectCuratedIncidents: Collector = async ({ now }) => {
   const file = path.join(process.cwd(), "prisma", "data", "ocorrencias-curadas.json");
   if (!existsSync(file)) return { records: [] };
   const config = readCommunityConfig();
@@ -565,50 +567,31 @@ const collectCuratedIncidents: Collector = async () => {
   const date = (value?: string) => (value ? new Date(value) : null);
   return {
     records: items.map((item): IngestRecord => {
-      // Áreas públicas só com fonte oficial ou imprensa; em violência doméstica, fica sempre a freguesia.
-      const tier = item.sourceTier ?? classifySourceTier(item.sourceUrl, item.account, config.contas);
-      const allowCustom = item.category !== "VIOLENCIA_DOMESTICA" && (item.precision !== "AREA_PUBLICA" || tier === "OFICIAL" || tier === "IMPRENSA");
-      const base = item.freguesia === CONCELHO ? concelhoPlace() : ((allowCustom && item.precision === "LOCALIDADE" && item.placeName ? localidadePlace(item.placeName) : null) ?? freguesiaPlace(item.freguesia));
-      const custom = allowCustom && item.latitude !== undefined && item.longitude !== undefined && item.precision && item.precision !== "FREGUESIA" && item.precision !== "LOCALIDADE";
-      const place = custom
-        ? { freguesiaSlug: base?.freguesiaSlug ?? null, placeName: item.placeName ?? null, precision: item.precision!, latitude: item.latitude!, longitude: item.longitude!, radiusM: item.radiusM ?? PRECISION_RADIUS_M[item.precision!] }
-        : { freguesiaSlug: base?.freguesiaSlug ?? null, placeName: base?.placeName ?? null, precision: base?.precision ?? null, latitude: base?.latitude ?? null, longitude: base?.longitude ?? null, radiusM: base?.radiusM ?? null };
-      // Sem data da ocorrência na fonte, fica a data de publicação, assinalada como tal.
-      const start = date(item.incidentStart) ?? date(item.publishedAt);
-      const unofficialTier = tier === "CONTA_OFICIAL" || tier === "COMUNITARIA";
-      const linkNote = !isArchivable(item.sourceUrl) ? "Ligação não publicada: a publicação não pode ser arquivada." : unofficialTier && item.personalData ? "Ligação não publicada: a publicação original contém dados pessoais." : null;
-      const summary = place.placeName ? neutralSummary(item.category, { placeName: place.placeName, precision: place.precision ?? "FREGUESIA" }) : "";
-      return {
-        kind: "incident",
-        sourceUrl: item.sourceUrl,
-        sourceName: item.sourceName,
-        sourceTier: tier,
-        independenceKey: independenceKey(item.sourceUrl, item.author, item.account),
-        author: item.author ?? null,
-        articleCategory: item.articleCategory ?? null,
-        publishedAt: date(item.publishedAt),
-        incidentStart: start,
-        incidentEnd: date(item.incidentEnd),
-        hasTime: item.hasTime ?? false,
-        category: item.category,
-        tags: item.tags ?? [],
-        summary,
-        claim: place.placeName && start ? structuredClaim(item.category, { placeName: place.placeName }, start, item.agreement === "CONTRADIZ") : "",
-        // O título só serve para a impressão digital: não é guardado.
-        titleFingerprint: titleFingerprint(item.title ?? `${item.category} ${place.placeName ?? ""}`),
-        textFingerprint: titleFingerprint(item.title ?? `${item.category} ${place.placeName ?? ""}`),
-        phase: item.phase ?? null,
-        denies: item.agreement === "CONTRADIZ",
-        flags: item.incidentStart ? [] : ["data-da-publicacao"],
-        doubts: [],
-        linkPublic: linkNote === null,
-        linkNote,
-        engagement: item.engagement ?? 0,
-        removed: item.removed ?? false,
-        incidentKey: item.incidentKey,
-        agreement: item.agreement,
-        ...place,
-      };
+      if (item.removed) return { kind: "incident-removed", sourceUrl: item.sourceUrl };
+      const publishedAt = date(item.publishedAt);
+      const place = curatedPlace(item);
+      if (!publishedAt) return { kind: "incident-rejected", sourceUrl: item.sourceUrl, reason: "sem data de publicação" };
+      if (!place) return { kind: "incident-rejected", sourceUrl: item.sourceUrl, reason: `freguesia desconhecida: ${item.freguesia}` };
+      const source = { ...item, url: item.sourceUrl, publishedAt, sourceTier: item.sourceTier ?? classifySourceTier(item.sourceUrl, item.account, config.contas) };
+      return assembleIncident(
+        source,
+        {
+          category: item.category,
+          tags: item.tags ?? [],
+          place,
+          incidentStart: date(item.incidentStart),
+          incidentEnd: date(item.incidentEnd),
+          hasTime: item.hasTime ?? false,
+          phase: item.phase ?? null,
+          flags: [],
+          doubts: [],
+          denies: item.agreement === "CONTRADIZ",
+          personalData: item.personalData ? ["indicados por quem registou"] : [],
+          // O título só serve para a impressão digital: não é guardado.
+          fingerprint: item.title ? { title: item.title, full: item.title } : undefined,
+        },
+        now,
+      );
     }),
   };
 };

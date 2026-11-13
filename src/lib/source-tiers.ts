@@ -31,6 +31,9 @@ const NEWS_HOSTS = [
   "regiaodeleiria.pt",
 ];
 
+/** Contas em redes sociais e fontes comunitárias: níveis 3 e 4. */
+export const isUnofficial = (tier: SourceTier) => tier === "CONTA_OFICIAL" || tier === "COMUNITARIA";
+
 /** Conta numa rede social, identificada por plataforma e nome, por exemplo «telegram:gnrportugal». */
 export type AccountEntry = { platform: string; handle: string; name: string; tier: "CONTA_OFICIAL" | "COMUNITARIA" };
 

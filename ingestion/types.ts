@@ -98,7 +98,20 @@ export type CrimeRecordInput = {
 
 export type PopulationRecord = { kind: "population"; year: number; population: number; sourceUrl: string; publishedAt: Date | null };
 
-export type IncidentRecord = {
+/** Lugar aproximado de uma ocorrência: nunca uma morada. */
+export type IncidentPlace = {
+  /** Slug da freguesia, ou CONCELHO quando a fonte só indica o concelho. */
+  freguesiaSlug: string;
+  placeName: string;
+  precision: GeoPrecision;
+  latitude: number;
+  longitude: number;
+  /** Raio da zona aproximada, em metros. Nulo ao nível da freguesia e do concelho. */
+  radiusM: number | null;
+};
+
+/** Relato completo de uma fonte, pronto a gravar: todos os campos já foram verificados na montagem. */
+export type IncidentRecord = IncidentPlace & {
   kind: "incident";
   /** URL canónico da notícia, comunicado ou publicação. */
   sourceUrl: string;
@@ -106,9 +119,9 @@ export type IncidentRecord = {
   sourceTier: SourceTier;
   independenceKey: string;
   author: string | null;
-  articleCategory?: string | null;
-  publishedAt: Date | null;
-  incidentStart: Date | null;
+  articleCategory: string | null;
+  publishedAt: Date;
+  incidentStart: Date;
   incidentEnd: Date | null;
   hasTime: boolean;
   category: IncidentCategory;
@@ -126,18 +139,13 @@ export type IncidentRecord = {
   linkPublic: boolean;
   linkNote: string | null;
   engagement: number;
-  /** A publicação original foi apagada. */
-  removed: boolean;
   /** Ligação explícita a uma ocorrência existente, nos registos à mão. */
   incidentKey?: string;
   agreement?: Agreement;
-  freguesiaSlug: string | null;
-  placeName: string | null;
-  precision: GeoPrecision | null;
-  latitude: number | null;
-  longitude: number | null;
-  radiusM: number | null;
 };
+
+/** A publicação original foi apagada: só a ligação interessa. */
+export type IncidentRemoval = { kind: "incident-removed"; sourceUrl: string };
 
 /** Artigo lido e recusado: fica só no registo de auditoria. */
 export type IncidentRejection = { kind: "incident-rejected"; sourceUrl: string; reason: string };
@@ -153,6 +161,7 @@ export type IngestRecord =
   | CrimeRecordInput
   | PopulationRecord
   | IncidentRecord
+  | IncidentRemoval
   | IncidentRejection;
 
 export class StructureError extends Error {

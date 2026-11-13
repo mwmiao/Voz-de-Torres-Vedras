@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { Incident, IncidentLogAction, IncidentReference, PrismaClient, SourceTier, UpdateStatus } from "@prisma/client";
+import type { Incident, IncidentLogAction, IncidentReference, PrismaClient, UpdateStatus } from "@prisma/client";
 import { WINDOW_DAYS } from "@/lib/incidents";
-import { archiveReason, computeVerification, fingerprintSimilarity, isNearDuplicate, matchClaim, mustHold, reviewReasons, thresholdsFromEnv, type Thresholds } from "@/lib/verification";
+import { isUnofficial } from "@/lib/source-tiers";
+import { assessIncident, fingerprintSimilarity, isNearDuplicate, matchClaim, thresholdsFromEnv, type AssessInput, type Thresholds } from "@/lib/verification";
 import { sha256 } from "../fetchers/http";
-import type { IncidentRecord, IncidentRejection } from "../types";
+import type { IncidentPlace, IncidentRecord, IncidentRejection, IncidentRemoval } from "../types";
 import type { ApplyContext } from "./apply";
 
 /** Registos feitos à mão prevalecem sobre a recolha automática da mesma publicação. */
@@ -12,8 +13,6 @@ export const CURATED_INCIDENTS = "ocorrencias-curadas";
 const DAY_MS = 86_400_000;
 /** Abaixo disto, uma publicação editada mudou de forma substancial. */
 const SUBSTANTIAL_CHANGE = 0.5;
-
-const unofficial = (tier: SourceTier) => tier === "CONTA_OFICIAL" || tier === "COMUNITARIA";
 
 /** Escreve no registo de auditoria, sem repetir a mesma entrada a cada execução. */
 export async function logIncident(context: Pick<ApplyContext, "db" | "sourceId" | "now">, action: IncidentLogAction, sourceUrl: string, reason: string, duplicateOfKey?: string) {
@@ -28,21 +27,52 @@ export async function applyIncidentRejection(context: ApplyContext, record: Inci
   return "UNCHANGED";
 }
 
-const placeFields = (record: IncidentRecord) => ({
-  freguesiaSlug: record.freguesiaSlug!,
-  placeName: record.placeName!,
-  precision: record.precision!,
-  latitude: record.latitude!,
-  longitude: record.longitude!,
-  radiusM: record.radiusM,
-});
+const placeFields = ({ freguesiaSlug, placeName, precision, latitude, longitude, radiusM }: IncidentPlace) => ({ freguesiaSlug, placeName, precision, latitude, longitude, radiusM });
 
-const flagsOf = (record: IncidentRecord) => [...record.flags, ...(record.doubts.length > 0 ? ["ambiguo"] : [])];
+/** Uma ocorrência gravada, com as suas fontes, nos termos da avaliação. */
+export function assessmentInput(incident: Incident, references: IncidentReference[]): Omit<AssessInput, "now"> {
+  return {
+    primary: { sourceTier: incident.sourceTier, independenceKey: incident.independenceKey, engagement: incident.engagement, removed: Boolean(incident.sourceRemovedAt) },
+    references: references.map((item) => ({
+      sourceTier: item.sourceTier,
+      independenceKey: item.independenceKey,
+      engagement: item.engagement,
+      removed: Boolean(item.removedAt),
+      agreement: item.agreement,
+      duplicate: Boolean(item.duplicateOfUrl),
+      retrievalDate: item.retrievalDate,
+    })),
+    category: incident.category,
+    phase: incident.phase,
+    flags: incident.flags.split(",").filter(Boolean),
+    doubts: incident.doubts.split("; ").filter(Boolean),
+    firstReportedAt: incident.firstReportedAt,
+    sourceChanged: incident.sourceChanged,
+  };
+}
+
+/** A publicação original foi apagada: a ocorrência ou a fonte adicional ficam marcadas; a reconciliação decide o resto. */
+export async function applyIncidentRemoval(context: ApplyContext, removal: IncidentRemoval): Promise<UpdateStatus> {
+  const { db, now } = context;
+  const incident = await db.incident.findUnique({ where: { key: removal.sourceUrl } });
+  if (incident) {
+    // Um registo à mão só é removido pelo próprio registo à mão.
+    if (incident.sourceRemovedAt || (incident.sourceId === CURATED_INCIDENTS && context.sourceId !== CURATED_INCIDENTS)) return "UNCHANGED";
+    await db.incident.update({ where: { id: incident.id }, data: { sourceRemovedAt: now, lastCheckedAt: now, updateStatus: "UPDATED" } });
+    await logIncident(context, "ATUALIZADO", incident.key, "a publicação original foi removida");
+    return "UPDATED";
+  }
+  const reference = await db.incidentReference.findFirst({ where: { url: removal.sourceUrl, removedAt: null } });
+  if (!reference) return "UNCHANGED";
+  await db.incidentReference.update({ where: { id: reference.id }, data: { removedAt: now, retrievalDate: now } });
+  await logIncident(context, "ATUALIZADO", removal.sourceUrl, "a publicação foi removida pela fonte");
+  return "UPDATED";
+}
 
 /** Um relato é a primeira fonte de uma ocorrência, ou mais uma fonte de uma ocorrência que já existe. */
 export async function applyIncident(context: ApplyContext, record: IncidentRecord): Promise<UpdateStatus> {
   const { db, sourceId, now } = context;
-  const start = record.incidentStart!;
+  const start = record.incidentStart;
 
   // 1. A mesma publicação como primeira fonte.
   const existing = await db.incident.findUnique({ where: { key: record.sourceUrl } });
@@ -51,13 +81,11 @@ export async function applyIncident(context: ApplyContext, record: IncidentRecor
   // 2. A mesma publicação como fonte adicional.
   const reference = await db.incidentReference.findFirst({ where: { url: record.sourceUrl } });
   if (reference) {
-    const data = { linkPublic: record.linkPublic, engagement: record.engagement, retrievalDate: now, removedAt: record.removed ? (reference.removedAt ?? now) : null };
-    const changed = data.linkPublic !== reference.linkPublic || data.engagement !== reference.engagement || Boolean(data.removedAt) !== Boolean(reference.removedAt);
+    const data = { linkPublic: record.linkPublic, engagement: record.engagement, retrievalDate: now, removedAt: null };
+    const changed = data.linkPublic !== reference.linkPublic || data.engagement !== reference.engagement || reference.removedAt !== null;
     await db.incidentReference.update({ where: { id: reference.id }, data });
-    if (record.removed && !reference.removedAt) await logIncident(context, "ATUALIZADO", record.sourceUrl, "a publicação foi removida pela fonte");
     return changed ? "UPDATED" : "UNCHANGED";
   }
-  if (record.removed) return "UNCHANGED";
 
   // 3. Outra fonte sobre uma ocorrência já registada.
   const candidates = await db.incident.findMany({
@@ -70,7 +98,7 @@ export async function applyIncident(context: ApplyContext, record: IncidentRecor
     : matchClaim({ ...placeFields(record), category: record.category, incidentStart: start, hasTime: record.hasTime, titleFingerprint: record.titleFingerprint, denies: record.denies }, candidates);
 
   if (match) {
-    const incident = candidates.find((item) => item.id === match.candidate.id)!;
+    const incident = match.candidate;
     const duplicateOf = findDuplicateOf(record, incident, incident.references);
     await db.incidentReference.create({
       data: {
@@ -81,7 +109,7 @@ export async function applyIncident(context: ApplyContext, record: IncidentRecor
         independenceKey: record.independenceKey,
         author: record.author,
         articleCategory: record.articleCategory ?? null,
-        publicationDate: record.publishedAt!,
+        publicationDate: record.publishedAt,
         claim: record.claim,
         agreement: match.agreement,
         duplicateOfUrl: duplicateOf,
@@ -93,19 +121,16 @@ export async function applyIncident(context: ApplyContext, record: IncidentRecor
       },
     });
     // Só autoridades e imprensa podem tornar a localização ou a hora mais precisas.
-    if (match.agreement === "ACRESCENTA" && !unofficial(record.sourceTier) && record.category !== "VIOLENCIA_DOMESTICA") {
-      await db.incident.update({ where: { id: incident.id }, data: { ...placeFields(record), geographicArea: record.placeName!, hasTime: record.hasTime || incident.hasTime, incidentStart: record.hasTime ? start : incident.incidentStart } });
+    if (match.agreement === "ACRESCENTA" && !isUnofficial(record.sourceTier) && record.category !== "VIOLENCIA_DOMESTICA") {
+      await db.incident.update({ where: { id: incident.id }, data: { ...placeFields(record), geographicArea: record.placeName, hasTime: record.hasTime || incident.hasTime, incidentStart: record.hasTime ? start : incident.incidentStart } });
     }
     if (duplicateOf) await logIncident(context, "DUPLICADO", record.sourceUrl, `repete ${duplicateOf}: não conta como fonte independente`, incident.key);
     else await logIncident(context, "ATUALIZADO", incident.key, `nova fonte (${record.sourceName}): ${match.agreement.toLowerCase()}, ${match.reason}`, record.sourceUrl);
     return "UPDATED";
   }
 
-  // 4. Uma ocorrência nova.
-  const flags = flagsOf(record);
-  const verification = computeVerification({ primaryTier: record.sourceTier, phase: record.phase, developing: flags.includes("em-desenvolvimento"), firstReportedAt: record.publishedAt!, now, sources: [{ sourceTier: record.sourceTier, agreement: "PRINCIPAL", independenceKey: record.independenceKey }] });
-  const held = mustHold({ primaryTier: record.sourceTier, category: record.category, flags }, record.doubts.length > 0);
-  const data = {
+  // 4. Uma ocorrência nova: grava os factos e avalia-os com as mesmas regras da reconciliação.
+  const facts = {
     key: record.sourceUrl,
     category: record.category,
     tags: record.tags.join(", "),
@@ -116,33 +141,51 @@ export async function applyIncident(context: ApplyContext, record: IncidentRecor
     sourceTier: record.sourceTier,
     independenceKey: record.independenceKey,
     author: record.author,
-    articleCategory: record.articleCategory ?? null,
+    articleCategory: record.articleCategory,
     sourceLinkPublic: record.linkPublic,
     sourceLinkNote: record.linkNote,
     incidentStart: start,
     incidentEnd: record.incidentEnd,
     hasTime: record.hasTime,
     phase: record.phase,
-    verificationStatus: verification.status,
-    flags: flags.join(","),
+    flags: record.flags.join(","),
+    doubts: record.doubts.join("; "),
     engagement: record.engagement,
-    firstReportedAt: record.publishedAt!,
+    firstReportedAt: record.publishedAt,
     lastCheckedAt: now,
-    heldForReview: held,
-    reviewStatus: held ? ("PENDENTE" as const) : ("NAO_NECESSARIA" as const),
-    reviewReasons: record.doubts.join("; "),
     ...placeFields(record),
     sourceUrl: record.sourceUrl,
-    publicationDate: record.publishedAt!,
+    publicationDate: record.publishedAt,
     retrievalDate: now,
-    geographicArea: record.placeName!,
+    geographicArea: record.placeName,
     dataPeriod: start.toISOString().slice(0, 10),
     sourceId,
   };
-  await db.incident.create({ data: { ...data, contentHash: hashOf(data), updateStatus: "NEW" } });
-  await logIncident(context, "NOVO", record.sourceUrl, held ? `retida para revisão${record.doubts.length ? `: ${record.doubts.join("; ")}` : ""}` : `publicada como ${verification.status.toLowerCase()}`);
+  const assessment = assessIncident({
+    primary: { sourceTier: record.sourceTier, independenceKey: record.independenceKey, engagement: record.engagement, removed: false },
+    references: [],
+    category: record.category,
+    phase: record.phase,
+    flags: record.flags,
+    doubts: record.doubts,
+    firstReportedAt: record.publishedAt,
+    sourceChanged: false,
+    now,
+  });
+  await db.incident.create({ data: { ...facts, ...persisted(assessment), contentHash: hashOf(facts), updateStatus: "NEW" } });
+  await logIncident(context, "NOVO", record.sourceUrl, assessment.heldForReview ? `retida para revisão: ${assessment.reviewReasons.join("; ")}` : `publicada como ${assessment.verificationStatus.toLowerCase()}`);
   return "NEW";
 }
+
+/** Os campos da avaliação, como ficam gravados. */
+const persisted = (assessment: ReturnType<typeof assessIncident>) => ({
+  verificationStatus: assessment.verificationStatus,
+  hasConflict: assessment.hasConflict,
+  reviewStatus: assessment.reviewStatus,
+  reviewReasons: assessment.reviewReasons.join("; "),
+  heldForReview: assessment.heldForReview,
+  archiveReason: assessment.archiveReason,
+});
 
 const hashOf = (data: { category: string; tags: string; summary: string; incidentStart: Date; phase: string | null; placeName: string; precision: string; sourceLinkPublic: boolean }) =>
   sha256(JSON.stringify([data.category, data.tags, data.summary, data.incidentStart, data.phase, data.placeName, data.precision, data.sourceLinkPublic]));
@@ -153,27 +196,22 @@ async function updatePrimary(context: ApplyContext, existing: Incident, record: 
     await db.incident.update({ where: { id: existing.id }, data: { lastCheckedAt: now } });
     return "UNCHANGED";
   }
-  if (record.removed) {
-    if (existing.sourceRemovedAt) return "UNCHANGED";
-    await db.incident.update({ where: { id: existing.id }, data: { sourceRemovedAt: now, lastCheckedAt: now, updateStatus: "UPDATED" } });
-    await logIncident(context, "ATUALIZADO", existing.key, "a publicação original foi removida");
-    return "UPDATED";
-  }
   // Uma publicação não oficial editada a fundo deixa de ser a mesma afirmação.
-  const changed = unofficial(existing.sourceTier) && existing.textFingerprint !== "" && fingerprintSimilarity(existing.textFingerprint, record.textFingerprint) < SUBSTANTIAL_CHANGE;
+  const changed = isUnofficial(existing.sourceTier) && existing.textFingerprint !== "" && fingerprintSimilarity(existing.textFingerprint, record.textFingerprint) < SUBSTANTIAL_CHANGE;
   const data = {
     category: record.category,
     tags: record.tags.join(", "),
     summary: record.summary,
-    incidentStart: record.incidentStart!,
+    incidentStart: record.incidentStart,
     hasTime: record.hasTime,
     phase: record.phase,
     sourceLinkPublic: record.linkPublic,
     sourceLinkNote: record.linkNote,
     engagement: record.engagement,
-    flags: flagsOf(record).join(","),
+    flags: record.flags.join(","),
+    doubts: record.doubts.join("; "),
     ...placeFields(record),
-    geographicArea: record.placeName!,
+    geographicArea: record.placeName,
   };
   const contentHash = hashOf(data);
   if (contentHash === existing.contentHash && !changed) {
@@ -190,7 +228,7 @@ async function updatePrimary(context: ApplyContext, existing: Incident, record: 
 
 /** Mesma conta, mesma agência ou cópia quase igual de outra publicação não oficial. */
 function findDuplicateOf(record: IncidentRecord, incident: Incident, references: IncidentReference[]): string | null {
-  const published = record.publishedAt!;
+  const published = record.publishedAt;
   const others = [
     { url: incident.key, independenceKey: incident.independenceKey, titleFingerprint: incident.titleFingerprint, publicationDate: incident.publicationDate, sourceTier: incident.sourceTier },
     ...references.filter((item) => !item.duplicateOfUrl).map((item) => ({ url: item.url, independenceKey: item.independenceKey, titleFingerprint: item.titleFingerprint, publicationDate: item.publicationDate, sourceTier: item.sourceTier })),
@@ -228,54 +266,26 @@ export async function reconcileIncidents(
   let archived = 0;
   let pending = 0;
   for (const incident of incidents) {
-    const flags = incident.flags.split(",").filter(Boolean);
-    const sources = [
-      { sourceTier: incident.sourceTier, agreement: "PRINCIPAL" as const, independenceKey: incident.independenceKey, removed: Boolean(incident.sourceRemovedAt) },
-      ...incident.references.map((item) => ({ sourceTier: item.sourceTier, agreement: item.agreement, independenceKey: item.independenceKey, duplicate: Boolean(item.duplicateOfUrl), removed: Boolean(item.removedAt) })),
-    ];
-    const verification = computeVerification({ primaryTier: incident.sourceTier, phase: incident.phase, developing: flags.includes("em-desenvolvimento"), firstReportedAt: incident.firstReportedAt, now, sources, sourceChanged: incident.sourceChanged, thresholds });
-    const unofficialCount = sources.filter((source) => unofficial(source.sourceTier)).length;
-    const engagement = incident.engagement + incident.references.reduce((sum, item) => sum + item.engagement, 0);
-    const newInformation = incident.references.some((item) => item.retrievalDate >= runStartedAt);
-    const reasons = [
-      ...(flags.includes("ambiguo") ? ["área ou categoria ambígua"] : []),
-      ...(incident.sourceChanged ? ["a publicação original mudou"] : []),
-      ...reviewReasons({ primaryTier: incident.sourceTier, category: incident.category, flags, status: verification.status, hasConflict: verification.hasConflict, firstReportedAt: incident.firstReportedAt, now, unofficialCount, engagement, newInformation, thresholds }),
-    ];
-    const decision = decisions.get(incident.key);
-    const held = mustHold({ primaryTier: incident.sourceTier, category: incident.category, flags }, flags.includes("ambiguo")) && decision?.decision !== "publicar";
-    const reviewStatus = decision ? "REVISTA" : reasons.length > 0 || held ? "PENDENTE" : "NAO_NECESSARIA";
-    const archive =
-      decision?.decision === "arquivar"
-        ? `arquivada na revisão${decision.note ? `: ${decision.note}` : ""}`
-        : archiveReason({ status: verification.status, officialContradiction: verification.officialContradiction, primaryRemoved: Boolean(incident.sourceRemovedAt), primaryTier: incident.sourceTier, firstReportedAt: incident.firstReportedAt, now, thresholds });
-
-    const next = {
-      verificationStatus: verification.status,
-      hasConflict: verification.hasConflict,
-      reviewStatus,
-      reviewReasons: reasons.join("; "),
-      heldForReview: held,
-      archiveReason: archive,
-    } as const;
+    const assessment = assessIncident({ ...assessmentInput(incident, incident.references), now, runStartedAt, decision: decisions.get(incident.key), thresholds });
+    const next = persisted(assessment);
+    if (next.reviewStatus === "PENDENTE") pending += 1;
     const same =
       next.verificationStatus === incident.verificationStatus &&
       next.hasConflict === incident.hasConflict &&
       next.reviewStatus === incident.reviewStatus &&
       next.reviewReasons === incident.reviewReasons &&
       next.heldForReview === incident.heldForReview &&
-      !archive;
-    if (reviewStatus === "PENDENTE") pending += 1;
+      !next.archiveReason;
     if (same) continue;
-    await db.incident.update({ where: { id: incident.id }, data: { ...next, archivedAt: archive ? now : null, lastCheckedAt: now, updateStatus: "UPDATED" } });
+    await db.incident.update({ where: { id: incident.id }, data: { ...next, archivedAt: next.archiveReason ? now : null, lastCheckedAt: now, updateStatus: "UPDATED" } });
     updated += 1;
-    if (archive) {
+    if (next.archiveReason) {
       archived += 1;
-      await logIncident(context, "ARQUIVADO", incident.key, archive);
+      await logIncident(context, "ARQUIVADO", incident.key, next.archiveReason);
     } else if (next.verificationStatus !== incident.verificationStatus) {
       await logIncident(context, "ATUALIZADO", incident.key, `estado: ${incident.verificationStatus.toLowerCase()} → ${next.verificationStatus.toLowerCase()}`);
     }
-    if (reviewStatus === "PENDENTE" && next.reviewReasons !== incident.reviewReasons) await logIncident(context, "REVISAO", incident.key, next.reviewReasons || "retida até revisão");
+    if (next.reviewStatus === "PENDENTE" && next.reviewReasons !== incident.reviewReasons) await logIncident(context, "REVISAO", incident.key, next.reviewReasons || "retida até revisão");
   }
   return { updated, archived, pending };
 }

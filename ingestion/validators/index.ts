@@ -61,23 +61,19 @@ export function validateRecord(record: IngestRecord): string[] {
       need(isOfficialUrl(record.sourceUrl), "sourceUrl");
       break;
     case "incident":
+      // A montagem já garante os campos e as regras de política; aqui só o que o tipo não exprime.
       need(isHttp(record.sourceUrl), "sourceUrl");
-      // Uma publicação removida só precisa da ligação: serve para arquivar o registo.
-      if (record.removed) break;
-      need(record.sourceTier, "sourceTier");
-      need(record.independenceKey, "independenceKey");
-      need(record.claim, "claim");
       need(record.sourceName, "sourceName");
-      need(record.publishedAt && !Number.isNaN(record.publishedAt.getTime()), "publishedAt");
-      need(record.incidentStart && !Number.isNaN(record.incidentStart.getTime()), "incidentStart");
-      need(record.freguesiaSlug && (FREGUESIA_POINTS[record.freguesiaSlug] || (record.freguesiaSlug === CONCELHO && record.precision === "CONCELHO")), "freguesiaSlug");
-      // Só o concelho, apenas com autoridades ou imprensa.
-      need(record.precision !== "CONCELHO" || record.sourceTier === "OFICIAL" || record.sourceTier === "IMPRENSA", "precision");
-      need(record.placeName && record.precision, "placeName");
+      need(!Number.isNaN(record.publishedAt.getTime()), "publishedAt");
+      need(!Number.isNaN(record.incidentStart.getTime()), "incidentStart");
+      need(FREGUESIA_POINTS[record.freguesiaSlug] || (record.freguesiaSlug === CONCELHO && record.precision === "CONCELHO"), "freguesiaSlug");
       // O ponto tem de cair dentro do concelho.
-      need(record.latitude !== null && record.latitude > 38.98 && record.latitude < 39.25, "latitude");
-      need(record.longitude !== null && record.longitude > -9.45 && record.longitude < -9.1, "longitude");
+      need(record.latitude > 38.98 && record.latitude < 39.25, "latitude");
+      need(record.longitude > -9.45 && record.longitude < -9.1, "longitude");
       need(record.summary.length >= 20, "summary");
+      break;
+    case "incident-removed":
+      need(isHttp(record.sourceUrl), "sourceUrl");
       break;
     case "incident-rejected":
       need(record.reason, "reason");

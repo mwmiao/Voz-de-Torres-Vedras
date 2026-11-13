@@ -1,5 +1,6 @@
 import type { Agreement, GeoPrecision, IncidentCategory, IncidentPhase, SourceTier, VerificationStatus } from "@prisma/client";
 import { REVIEW_DEFAULTS } from "./incidents";
+import { isUnofficial } from "./source-tiers";
 
 const HOUR_MS = 3_600_000;
 
@@ -59,8 +60,8 @@ const PRECISION_RANK: Record<GeoPrecision, number> = { CONCELHO: -1, FREGUESIA: 
  * Procura a ocorrência a que um relato se refere, sem depender do texto exato do título: compara
  * categoria, freguesia, data e as impressões das palavras. Devolve também a concordância.
  */
-export function matchClaim(claim: Claim, candidates: Candidate[]): { candidate: Candidate; agreement: Agreement; reason: string } | null {
-  let best: { candidate: Candidate; agreement: Agreement; reason: string; score: number } | null = null;
+export function matchClaim<T extends Candidate>(claim: Claim, candidates: T[]): { candidate: T; agreement: Agreement; reason: string } | null {
+  let best: { candidate: T; agreement: Agreement; reason: string; score: number } | null = null;
   for (const candidate of candidates) {
     const hours = Math.abs(claim.incidentStart.getTime() - candidate.incidentStart.getTime()) / HOUR_MS;
     if (hours > 48) continue;
@@ -97,8 +98,7 @@ export function matchClaim(claim: Claim, candidates: Candidate[]): { candidate: 
 
 /** Cópias e partilhas: publicações não oficiais quase iguais, em poucas horas, contam como uma só afirmação. */
 export function isNearDuplicate(a: { titleFingerprint: string; publicationDate: Date; sourceTier: SourceTier }, b: { titleFingerprint: string; publicationDate: Date; sourceTier: SourceTier }): boolean {
-  const unofficial = (tier: SourceTier) => tier === "CONTA_OFICIAL" || tier === "COMUNITARIA";
-  if (!unofficial(a.sourceTier) || !unofficial(b.sourceTier)) return false;
+  if (!isUnofficial(a.sourceTier) || !isUnofficial(b.sourceTier)) return false;
   const hours = Math.abs(a.publicationDate.getTime() - b.publicationDate.getTime()) / HOUR_MS;
   return hours <= 12 && fingerprintSimilarity(a.titleFingerprint, b.titleFingerprint) >= 0.8;
 }
@@ -194,7 +194,7 @@ const SERIOUS: IncidentCategory[] = ["VIOLENCIA_DOMESTICA", "AGRESSAO", "ROUBO"]
 /** Motivos para pôr uma ocorrência na fila de revisão. Só se aplica a fontes não oficiais e a conflitos. */
 export function reviewReasons(input: ReviewInput): string[] {
   const thresholds = input.thresholds ?? REVIEW_DEFAULTS;
-  const unofficial = input.primaryTier === "CONTA_OFICIAL" || input.primaryTier === "COMUNITARIA";
+  const unofficial = isUnofficial(input.primaryTier);
   const reasons: string[] = [];
   if (input.hasConflict) reasons.push("fontes em conflito");
   if (!unofficial) return reasons;
@@ -215,7 +215,7 @@ export function reviewReasons(input: ReviewInput): string[] {
  * pode causar dano mesmo marcada como «Não confirmado».
  */
 export function mustHold(input: Pick<ReviewInput, "primaryTier" | "category" | "flags">, ambiguous: boolean): boolean {
-  const unofficial = input.primaryTier === "CONTA_OFICIAL" || input.primaryTier === "COMUNITARIA";
+  const unofficial = isUnofficial(input.primaryTier);
   return ambiguous || (unofficial && (input.category === "VIOLENCIA_DOMESTICA" || input.flags.includes("menores")));
 }
 
@@ -236,4 +236,90 @@ export function archiveReason(input: {
     return `sem confirmação ao fim de ${thresholds.unconfirmedArchiveDays} dias`;
   }
   return null;
+}
+
+// ---------- Avaliação completa ----------
+
+/** Fonte de uma ocorrência como fica gravada: a primeira e as outras que a referem. */
+export type AssessedSource = {
+  sourceTier: SourceTier;
+  independenceKey: string;
+  engagement: number;
+  removed: boolean;
+};
+
+export type AssessInput = {
+  primary: AssessedSource;
+  references: (AssessedSource & { agreement: Agreement; duplicate: boolean; retrievalDate: Date })[];
+  category: IncidentCategory;
+  phase: IncidentPhase | null;
+  flags: string[];
+  /** Dúvidas da extração, com o pormenor: «refere também outros concelhos (loures)». */
+  doubts: string[];
+  firstReportedAt: Date;
+  sourceChanged: boolean;
+  now: Date;
+  /** Início da recolha atual: fontes chegadas depois disto são informação nova. */
+  runStartedAt?: Date;
+  decision?: { decision: "publicar" | "manter" | "arquivar"; note?: string };
+  thresholds?: Thresholds;
+};
+
+export type Assessment = {
+  verificationStatus: VerificationStatus;
+  hasConflict: boolean;
+  reviewStatus: "NAO_NECESSARIA" | "PENDENTE" | "REVISTA";
+  reviewReasons: string[];
+  heldForReview: boolean;
+  archiveReason: string | null;
+};
+
+/**
+ * Tudo o que se decide sobre uma ocorrência a partir das suas fontes: estado, conflito, revisão,
+ * retenção e arquivo. É o único sítio onde estas regras se aplicam, na criação e na reconciliação.
+ */
+export function assessIncident(input: AssessInput): Assessment {
+  const { primary, references, now, decision } = input;
+  const thresholds = input.thresholds ?? REVIEW_DEFAULTS;
+  const sources: SourceLink[] = [
+    { sourceTier: primary.sourceTier, agreement: "PRINCIPAL", independenceKey: primary.independenceKey, removed: primary.removed },
+    ...references.map((item) => ({ sourceTier: item.sourceTier, agreement: item.agreement, independenceKey: item.independenceKey, duplicate: item.duplicate, removed: item.removed })),
+  ];
+  const verification = computeVerification({
+    primaryTier: primary.sourceTier,
+    phase: input.phase,
+    developing: input.flags.includes("em-desenvolvimento"),
+    firstReportedAt: input.firstReportedAt,
+    now,
+    sources,
+    sourceChanged: input.sourceChanged,
+    thresholds,
+  });
+  const reviewInput: ReviewInput = {
+    primaryTier: primary.sourceTier,
+    category: input.category,
+    flags: input.flags,
+    status: verification.status,
+    hasConflict: verification.hasConflict,
+    firstReportedAt: input.firstReportedAt,
+    now,
+    unofficialCount: sources.filter((source) => isUnofficial(source.sourceTier)).length,
+    engagement: primary.engagement + references.reduce((sum, item) => sum + item.engagement, 0),
+    newInformation: input.runStartedAt ? references.some((item) => item.retrievalDate >= input.runStartedAt!) : false,
+    thresholds,
+  };
+  const reviewReasonsList = [...input.doubts, ...(input.sourceChanged ? ["a publicação original mudou"] : []), ...reviewReasons(reviewInput)];
+  const heldForReview = mustHold(reviewInput, input.doubts.length > 0) && decision?.decision !== "publicar";
+  const archive =
+    decision?.decision === "arquivar"
+      ? `arquivada na revisão${decision.note ? `: ${decision.note}` : ""}`
+      : archiveReason({ status: verification.status, officialContradiction: verification.officialContradiction, primaryRemoved: primary.removed, primaryTier: primary.sourceTier, firstReportedAt: input.firstReportedAt, now, thresholds });
+  return {
+    verificationStatus: verification.status,
+    hasConflict: verification.hasConflict,
+    reviewStatus: decision ? "REVISTA" : reviewReasonsList.length > 0 || heldForReview ? "PENDENTE" : "NAO_NECESSARIA",
+    reviewReasons: reviewReasonsList,
+    heldForReview,
+    archiveReason: archive,
+  };
 }

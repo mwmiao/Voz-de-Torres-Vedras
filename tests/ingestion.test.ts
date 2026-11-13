@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -253,5 +253,40 @@ describe("acesso respeitoso", () => {
     }), cacheDir());
     expect((await http.text("https://x.pt/a", { cache: true })).notModified).toBe(false);
     expect((await http.text("https://x.pt/a", { cache: true })).notModified).toBe(true);
+  });
+});
+
+describe("cache HTTP resistente", () => {
+  const stub = (async () => new Response("")) as typeof fetch;
+  const freshDir = () => mkdtempSync(path.join(tmpdir(), "voz-http-"));
+  const readSaved = (dir: string) => JSON.parse(readFileSync(path.join(dir, "http.json"), "utf8"));
+
+  it("ignora uma cache truncada", () => {
+    const dir = freshDir();
+    writeFileSync(path.join(dir, "http.json"), '{"truncated":');
+    const http = new PoliteHttp(0, stub, dir);
+    http.saveCache();
+    expect(readSaved(dir)).toEqual({});
+  });
+
+  it("ignora JSON válido que não seja um objeto", () => {
+    for (const content of ["[]", '"x"', "null"]) {
+      const dir = freshDir();
+      writeFileSync(path.join(dir, "http.json"), content);
+      const http = new PoliteHttp(0, stub, dir);
+      http.saveCache();
+      expect(readSaved(dir)).toEqual({});
+    }
+  });
+
+  it("grava de forma atómica sem deixar ficheiro temporário", async () => {
+    const dir = freshDir();
+    const fetcher = (async (input: RequestInfo | URL) =>
+      String(input).endsWith("/robots.txt") ? new Response("") : new Response("olá")) as typeof fetch;
+    const http = new PoliteHttp(0, fetcher, dir);
+    await http.text("https://x.pt/a", { cache: true });
+    http.saveCache();
+    expect(Object.keys(readSaved(dir))).toHaveLength(1);
+    expect(existsSync(path.join(dir, "http.json.tmp"))).toBe(false);
   });
 });

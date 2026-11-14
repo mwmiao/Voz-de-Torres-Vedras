@@ -15,6 +15,7 @@ export default async function DossiesPage() {
     <>
       <PageHead title="Dossiês" kicker={<KindLabel kind="CONTEXTO_EDITORIAL" />}>
         <p>Assuntos municipais reunidos num só lugar, com um resumo neutro, datas e as decisões oficiais relacionadas.</p>
+        <LastUpdated date={issues.map((issue) => issue.updatedAt).sort((a, b) => b.getTime() - a.getTime())[0]} className="mt-1" />
       </PageHead>
       <ul className="mx-auto grid max-w-6xl gap-4 px-4 py-8 md:grid-cols-2">
         {issues.map((issue) => (
@@ -22,8 +23,7 @@ export default async function DossiesPage() {
             <p className="text-xs font-semibold text-muted">{issue.category}</p>
             <h2 className="mt-1 font-serif text-lg font-semibold"><Link href={`/dossies/${issue.slug}`} className="underline">{issue.title}</Link></h2>
             <p className="mt-1 text-sm text-muted">Fase: {issue.stage}</p>
-            <p className="mt-1 text-sm text-muted">{issue._count.decisions} decisões · {issue._count.sources} fontes</p>
-            <LastUpdated date={issue.updatedAt} className="mt-2" />
+            <p className="mt-1 text-sm text-muted">{issue._count.decisions === 1 ? "1 decisão" : `${issue._count.decisions} decisões`} · {issue._count.sources === 1 ? "1 fonte" : `${issue._count.sources} fontes`}</p>
           </li>
         ))}
       </ul>

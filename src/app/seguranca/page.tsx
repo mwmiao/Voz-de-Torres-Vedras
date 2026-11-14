@@ -43,9 +43,9 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
   const selectedFreguesia = freguesias.find((item) => item.slug === params.freguesia);
 
   const head = (
-    <PageHead title="Segurança">
+    <PageHead title="Segurança" sections={[{ href: "#ocorrencias", label: "Ocorrências recentes" }, { href: "#estatisticas", label: "Crimes registados por ano" }]}>
       <p>Ocorrências publicadas nas últimas duas semanas, num mapa com localizações aproximadas, e crimes registados por ano, com dados do INE e da Direção-Geral da Política de Justiça.</p>
-      <LastUpdated date={updated} className="mt-1" />
+      <LastUpdated date={updated} className="mt-1" label="Estatísticas anuais do INE recolhidas a" />
     </PageHead>
   );
 
@@ -108,14 +108,14 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
                 {panorama(records, populationLatest?.population ?? null).map((sentence) => <p key={sentence}>{sentence}</p>)}
               </div>
               <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <MetricCard label={`Crimes registados em ${latest}`} value={formatNumber(total?.count ?? 0)} trend={compareValues(total?.count, totalBefore?.count, String(previous))} source={{ href: total?.sourceUrl ?? OFFICIAL_LINKS[0].url, label: "INE e DGPJ" }} updated={updated} />
-                {totalRate ? <MetricCard label={`Taxa de criminalidade em ${latest}`} value={formatRate(totalRate.value)} note="Crimes por 1 000 residentes" source={{ href: OFFICIAL_LINKS[1].url, label: "INE e DGPJ" }} updated={updated} /> : null}
-                {populationLatest ? <MetricCard label={`População residente em ${populationLatest.year}`} value={formatNumber(populationLatest.population)} note="Estimativa do INE" source={{ href: populationLatest.sourceUrl, label: "INE" }} updated={populationLatest.retrievalDate} /> : null}
+                <MetricCard label={`Crimes registados em ${latest}`} value={formatNumber(total?.count ?? 0)} trend={compareValues(total?.count, totalBefore?.count, String(previous))} source={{ href: total?.sourceUrl ?? OFFICIAL_LINKS[0].url, label: "INE e DGPJ" }} />
+                {totalRate ? <MetricCard label={`Taxa de criminalidade em ${latest}`} value={formatRate(totalRate.value)} note="Crimes por 1 000 residentes" source={{ href: OFFICIAL_LINKS[1].url, label: "INE e DGPJ" }} /> : null}
+                {populationLatest ? <MetricCard label={`População residente em ${populationLatest.year}`} value={formatNumber(populationLatest.population)} note="Estimativa do INE" source={{ href: populationLatest.sourceUrl, label: "INE" }} /> : null}
               </dl>
             </section>
 
             <section aria-labelledby="categorias">
-              <SectionHead id="categorias" title={`Categorias em ${latest}`}>Variação face a {previous}.</SectionHead>
+              <SectionHead id="categorias" title={`Categorias em ${latest}`}>Variação face a {previous}. {FREGUESIA_NOTICE}</SectionHead>
               <ul className="mt-3 grid gap-3 md:grid-cols-2">
                 {trends.map(({ category, current, trend }) => (
                   <li key={category.code} className="rounded-lg border border-line bg-surface p-3">
@@ -127,25 +127,6 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
               </ul>
             </section>
 
-            <section aria-labelledby="freguesia">
-              <SectionHead id="freguesia" title="Na minha freguesia" />
-              <form method="get" className="mt-3 flex max-w-xl flex-wrap items-end gap-2">
-                <label className="min-w-0 flex-1 text-sm font-medium">Escolha a freguesia
-                  <select name="freguesia" defaultValue={params.freguesia ?? ""} className="field mt-1">
-                    <option value="">Selecione</option>
-                    {freguesias.map((freguesia) => <option key={freguesia.slug} value={freguesia.slug}>{freguesia.name}</option>)}
-                  </select>
-                </label>
-                <button type="submit" className="btn">Ver</button>
-              </form>
-              {selectedFreguesia ? (
-                <div className="mt-3 rounded-lg border border-line bg-surface p-4" role="status">
-                  <p className="font-semibold">{selectedFreguesia.name}</p>
-                  <p className="mt-1 text-sm">As entidades oficiais não publicam crimes registados por freguesia, pelo que não existe resumo para {selectedFreguesia.name}. Os valores acima dizem respeito a todo o concelho.</p>
-                  <p className="mt-2 text-sm"><Link href={`/alertas?area=${encodeURIComponent(selectedFreguesia.name)}`} className="underline">Ver alertas para esta freguesia</Link></p>
-                </div>
-              ) : <p className="mt-2 text-sm text-muted">{FREGUESIA_NOTICE}</p>}
-            </section>
           </>
         ) : (
           <section aria-labelledby="detalhe" className="space-y-4">

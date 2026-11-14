@@ -193,3 +193,23 @@ describe("formatação", () => {
     expect(voteSummary({ voteMode: "MAIORIA", votesFor: 41, votesAgainst: 0, abstentions: 1 })).toBe("41 a favor · 0 contra · 1 abstenção");
   });
 });
+
+describe("apresentação", () => {
+  it("passa a frase normal os títulos só em maiúsculas e deixa os outros como estão", async () => {
+    const { displayTitle } = await import("../src/lib/format");
+    expect(displayTitle("AVISOS DE TRÂNSITO | CONCELHO TORRES VEDRAS")).toBe("Avisos de trânsito | Concelho Torres Vedras");
+    expect(displayTitle("CORTE DE TRÂNSITO NO CM 1387")).toBe("Corte de trânsito no CM 1387");
+    expect(displayTitle("Aquisição de serviços dos SMAS")).toBe("Aquisição de serviços dos SMAS");
+  });
+
+  it("junta o mesmo aviso publicado por duas entidades", async () => {
+    const { groupAlerts } = await import("../src/lib/alerts");
+    const day = new Date("2026-11-02T00:00:00Z");
+    const groups = groupAlerts([
+      { id: "a", title: "Corte de trânsito no CM 1387", startsAt: day, endsAt: null },
+      { id: "b", title: "Corte de trânsito  no CM 1387", startsAt: day, endsAt: null },
+      { id: "c", title: "Corte de trânsito no CM 1387", startsAt: new Date("2026-12-01T00:00:00Z"), endsAt: null },
+    ]);
+    expect(groups.map((group) => [group.alert.id, group.also.map((other) => other.id)])).toEqual([["a", ["b"]], ["c", []]]);
+  });
+});

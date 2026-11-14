@@ -6,12 +6,13 @@ import { useEffect, useRef, useState } from "react";
 
 const LINKS = [
   { href: "/", label: "Início" },
+  { href: "/alertas", label: "Alertas" },
+  { href: "/reunioes", label: "Reuniões e decisões" },
+  { href: "/dossies", label: "Dossiês" },
   { href: "/orcamento", label: "Orçamento" },
   { href: "/contratos", label: "Contratos" },
-  { href: "/reunioes", label: "Reuniões e decisões" },
-  { href: "/camara", label: "Câmara" },
+  { href: "/camara", label: "Eleitos" },
   { href: "/seguranca", label: "Segurança" },
-  { href: "/alertas", label: "Alertas" },
   { href: "/metricas", label: "Métricas" },
   { href: "/fontes", label: "Fontes" },
 ];
@@ -41,15 +42,23 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-paper">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 px-4 py-2">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2">
         <Link href="/" className="py-1 font-serif text-xl font-semibold no-underline">Voz de Torres Vedras</Link>
         <div className="lg:hidden">
           <button ref={button} type="button" className="btn-quiet" aria-expanded={open} aria-controls="navegacao" onClick={() => setOpen(!open)}>
             {open ? "Fechar" : "Menu"}
           </button>
         </div>
-        <nav id="navegacao" aria-label="Principal" className={`${open ? "block" : "hidden"} w-full lg:block lg:w-auto`}>
-          <ul className="flex flex-col gap-0.5 py-2 lg:flex-row lg:py-0">
+        {/* Pesquisa em todo o site: decisões, reuniões, contratos, concursos e documentos. */}
+        <form role="search" method="get" action="/resumos" className="order-3 flex w-full gap-2 lg:order-none lg:w-80">
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">Pesquisar em todo o site</span>
+            <input type="search" name="q" className="field site-search" placeholder="Pesquisar no site" />
+          </label>
+          <button type="submit" className="btn-quiet site-search">Pesquisar</button>
+        </form>
+        <nav id="navegacao" aria-label="Principal" className={`${open ? "block" : "hidden"} order-4 w-full lg:block`}>
+          <ul className="flex flex-col gap-0.5 py-2 lg:-mx-2 lg:flex-row lg:py-0">
             {LINKS.map((link) => (
               <li key={link.href}>
                 <Link

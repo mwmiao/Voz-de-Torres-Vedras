@@ -2,7 +2,7 @@ import type { Alert, AlertSeverity, Summary } from "@prisma/client";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ALERT_TYPE_LABEL, SEVERITY_LABEL } from "@/lib/alerts";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { displayTitle, formatDate, formatDateTime } from "@/lib/format";
 import { SUMMARY_TYPE_LABEL, SUMMARY_UNAVAILABLE } from "@/lib/summaries";
 import type { Trend } from "@/lib/trends";
 
@@ -35,31 +35,47 @@ export function SeverityBadge({ severity }: { severity: AlertSeverity }) {
   );
 }
 
-function period(alert: Alert): string {
+export function alertPeriod(alert: Alert): string {
   const format = alert.hasTime ? formatDateTime : formatDate;
   const start = alert.startsAt ? format(alert.startsAt) : null;
   if (alert.hasOfficialEnd && alert.endsAt) return start && start !== format(alert.endsAt) ? `De ${start} a ${format(alert.endsAt)}` : `A ${format(alert.endsAt)}`;
   return start ? `Desde ${start}. A fonte não indica data de fim` : "A fonte não indica datas";
 }
 
-export function AlertCard({ alert, compact = false }: { alert: Alert; compact?: boolean }) {
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "outra fonte";
+  }
+};
+
+/** `also`: o mesmo aviso publicado por outras entidades, mostrado como fontes adicionais. */
+export function AlertCard({ alert, compact = false, also = [] }: { alert: Alert; compact?: boolean; also?: Alert[] }) {
   return (
-    <article className={`rounded-lg border border-l-4 border-line bg-surface p-4 ${SEVERITY_STYLE[alert.severity].className}-edge`}>
+    <article id={`alerta-${alert.id}`} className={`scroll-mt-36 rounded-lg border border-l-4 border-line bg-surface p-4 ${SEVERITY_STYLE[alert.severity].className}-edge`}>
       <div className="flex flex-wrap items-center gap-2">
         <SeverityBadge severity={alert.severity} />
         <span className="text-xs font-semibold text-muted">{ALERT_TYPE_LABEL[alert.type]}</span>
       </div>
-      <h3 className="mt-2 font-semibold leading-snug">{alert.title}</h3>
+      <h3 className="mt-2 font-semibold leading-snug">{displayTitle(alert.title)}</h3>
       {compact ? null : <p className="mt-1 text-sm">{alert.description}</p>}
       <dl className="mt-2 grid gap-x-3 gap-y-0.5 text-sm sm:grid-cols-[auto_1fr]">
         <dt className="font-medium text-muted">Quando</dt>
-        <dd>{period(alert)}</dd>
+        <dd>{alertPeriod(alert)}</dd>
         <dt className="font-medium text-muted">Onde</dt>
         <dd>{alert.geographicArea}</dd>
       </dl>
       <p className="mt-2 text-sm">
         <ExternalLink href={alert.sourceUrl}>Ver aviso oficial<span className="sr-only">: {alert.title}</span></ExternalLink>
+        {also.length > 0 ? <span className="text-muted"> ({hostOf(alert.sourceUrl)})</span> : null}
       </p>
+      {also.map((other) => (
+        <p key={other.id} className="mt-1 text-sm">
+          <ExternalLink href={other.sourceUrl}>Mesmo aviso noutra fonte oficial<span className="sr-only">: {other.title}</span></ExternalLink>
+          <span className="text-muted"> ({hostOf(other.sourceUrl)})</span>
+        </p>
+      ))}
       <p className="mt-1 text-xs text-muted">Verificado a {formatDateTime(alert.lastCheckedAt)}</p>
     </article>
   );
@@ -111,7 +127,7 @@ export function SummaryBlock({ summary, heading = true }: { summary: Summary; he
         <>
           <p className="text-xs font-semibold text-muted">{SUMMARY_TYPE_LABEL[summary.entityType] ?? "Registo"}</p>
           <h3 className="mt-1 font-semibold leading-snug">
-            {summary.href ? <Link href={summary.href} className="underline">{summary.title}</Link> : summary.title}
+            {summary.href ? <Link href={summary.href} className="underline">{displayTitle(summary.title)}</Link> : displayTitle(summary.title)}
           </h3>
         </>
       ) : null}
@@ -151,6 +167,16 @@ export function Disclosure({ summary, children, open = false }: { summary: strin
       <summary>{summary}</summary>
       <div className="mt-3">{children}</div>
     </details>
+  );
+}
+
+/** Pesquisa e filtros de uma lista: sempre à vista, por cima da lista que filtram. */
+export function FilterPanel({ children, clearHref }: { children: ReactNode; clearHref?: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-surface p-4">
+      {children}
+      {clearHref ? <p className="mt-3 text-sm"><Link href={clearHref} className="underline">Limpar filtros</Link></p> : null}
+    </div>
   );
 }
 

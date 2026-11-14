@@ -1,4 +1,5 @@
 import type { AlertSeverity, AlertType, Prisma } from "@prisma/client";
+import { searchKey } from "./search";
 
 export const ALERT_TYPE_LABEL: Record<AlertType, string> = {
   METEOROLOGIA: "Meteorologia",
@@ -42,6 +43,23 @@ export const FREGUESIAS = [
 ];
 
 export const FREGUESIAS_URL = "https://www.cm-tvedras.pt/municipio/freguesias/";
+
+const dayOf = (date: Date | null) => date?.toISOString().slice(0, 10) ?? "";
+
+/**
+ * O mesmo aviso publicado por duas entidades (por exemplo, Câmara e SMAS) aparece uma só vez,
+ * com as duas fontes. São o mesmo aviso quando têm o mesmo título e as mesmas datas.
+ */
+export function groupAlerts<T extends { title: string; startsAt: Date | null; endsAt: Date | null }>(alerts: T[]): { alert: T; also: T[] }[] {
+  const groups = new Map<string, { alert: T; also: T[] }>();
+  for (const alert of alerts) {
+    const key = `${searchKey(alert.title).replace(/\s+/g, " ").trim()}|${dayOf(alert.startsAt)}|${dayOf(alert.endsAt)}`;
+    const group = groups.get(key);
+    if (group) group.also.push(alert);
+    else groups.set(key, { alert, also: [] });
+  }
+  return [...groups.values()];
+}
 
 export const activeAlertWhere = (now: Date): Prisma.AlertWhereInput => ({ OR: [{ endsAt: null }, { endsAt: { gte: now } }] });
 export const expiredAlertWhere = (now: Date): Prisma.AlertWhereInput => ({ endsAt: { lt: now } });

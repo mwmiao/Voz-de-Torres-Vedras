@@ -1,9 +1,9 @@
-import type { Meeting, Source } from "@prisma/client";
+import type { Meeting, Prisma, Source } from "@prisma/client";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DecisionList } from "@/components/DecisionTable";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
-import { Disclosure, EmptyState, Pagination, SectionHead } from "@/components/civic";
+import { Disclosure, EmptyState, FilterPanel, Pagination, SectionHead } from "@/components/civic";
 import { SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { decisionOrder, decisionWhere, queryString, type SearchParams } from "@/lib/filters";
@@ -36,9 +36,14 @@ function MeetingItem({ meeting }: { meeting: MeetingRow }) {
 export default async function ReunioesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.pagina) || 1);
-  const where = decisionWhere(params);
+  const base = decisionWhere(params);
+  // Por omissão, primeiro o que já tem resultado: os pontos à espera de ata ficam num separador próprio.
+  const view = params.resultado || params.vista === "todas" ? "todas" : params.vista === "aguardar" ? "aguardar" : "resultado";
+  const WITH_RESULT: Prisma.DecisionWhereInput = { outcome: { not: "POR_PUBLICAR" } };
+  const WAITING: Prisma.DecisionWhereInput = { outcome: "POR_PUBLICAR" };
+  const where: Prisma.DecisionWhereInput = view === "todas" ? base : { AND: [base, view === "aguardar" ? WAITING : WITH_RESULT] };
 
-  const [decisions, total, meetings, updated] = await Promise.all([
+  const [decisions, total, withResult, waiting, meetings, updated] = await Promise.all([
     db.decision.findMany({
       where,
       include: { meeting: true, sources: { where: { official: true } } },
@@ -47,6 +52,8 @@ export default async function ReunioesPage({ searchParams }: { searchParams: Pro
       take: PAGE_SIZE,
     }),
     db.decision.count({ where }),
+    db.decision.count({ where: { AND: [base, WITH_RESULT] } }),
+    db.decision.count({ where: { AND: [base, WAITING] } }),
     db.meeting.findMany({
       include: { sources: { where: { official: true } }, _count: { select: { decisions: true } } },
       orderBy: { date: "desc" },
@@ -55,7 +62,12 @@ export default async function ReunioesPage({ searchParams }: { searchParams: Pro
   ]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filters = { ...params, pagina: undefined };
-  const filtered = Object.values(filters).some(Boolean);
+  const filtered = Object.values({ ...filters, vista: undefined }).some(Boolean);
+  const tabs = [
+    { view: "resultado", label: `Com resultado (${withResult})`, href: `/reunioes?${queryString(filters, { vista: undefined, resultado: undefined })}#decisoes` },
+    { view: "aguardar", label: `A aguardar publicação (${waiting})`, href: `/reunioes?${queryString(filters, { vista: "aguardar", resultado: undefined })}#decisoes` },
+    { view: "todas", label: `Todas (${withResult + waiting})`, href: `/reunioes?${queryString(filters, { vista: "todas", resultado: undefined })}#decisoes` },
+  ];
   const pageLink = (target: number) => `/reunioes?${queryString(filters, { pagina: String(target) })}#decisoes`;
   const summaries = await summaryMap("decisao", decisions.map((decision) => decision.slug));
   const now = new Date();
@@ -66,7 +78,11 @@ export default async function ReunioesPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHead title="Reuniões e decisões" kicker={<KindLabel kind="REGISTO_OFICIAL" />}>
+      <PageHead
+        title="Reuniões e decisões"
+        kicker={<KindLabel kind="REGISTO_OFICIAL" />}
+        sections={[{ href: "#reunioes", label: "Reuniões" }, { href: "#decisoes", label: "Decisões" }, { href: "/dossies", label: "Por assunto (dossiês)" }]}
+      >
         <p>O que a Assembleia Municipal e a Câmara discutiram e decidiram. Cada registo liga ao edital, à ata ou ao vídeo oficial.</p>
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-10 px-4 py-8">
@@ -90,9 +106,11 @@ export default async function ReunioesPage({ searchParams }: { searchParams: Pro
           <SectionHead id="decisoes" title="Decisões" action={<CsvLink href={`/dados/decisoes.csv?${queryString(filters)}`} />}>
             As deliberações do Executivo Municipal ainda não estão transcritas ponto a ponto, porque o site da Câmara exclui os seus PDF do acesso automático. As atas estão ligadas em cada reunião.
           </SectionHead>
-          <Disclosure summary="Pesquisar e filtrar" open={filtered}>
-          <form role="search" method="get" action="#decisoes" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto_1fr_auto]">
-            <label className="text-sm font-medium">Pesquisar<input name="q" defaultValue={params.q ?? ""} className="field mt-1" placeholder="Título ou proposta" /></label>
+          <div className="mt-3">
+          <FilterPanel clearHref={filtered ? "/reunioes#decisoes" : undefined}>
+          <form role="search" method="get" action="#decisoes" className="grid grid-cols-2 gap-3 lg:grid-cols-[2fr_1fr_1fr_auto_1fr_auto]">
+            {view === "aguardar" ? <input type="hidden" name="vista" value="aguardar" /> : null}
+            <label className="col-span-2 text-sm font-medium lg:col-span-1">Pesquisar<input name="q" defaultValue={params.q ?? ""} className="field mt-1" placeholder="Título ou proposta" /></label>
             <label className="text-sm font-medium">Órgão
               <select name="orgao" defaultValue={params.orgao ?? ""} className="field mt-1">
                 <option value="">Todos</option>
@@ -113,9 +131,15 @@ export default async function ReunioesPage({ searchParams }: { searchParams: Pro
                 <option value="titulo">Título</option>
               </select>
             </label>
-            <button type="submit" className="btn self-end">Pesquisar</button>
+            <button type="submit" className="btn col-span-2 self-end lg:col-span-1">Pesquisar</button>
           </form>
-        </Disclosure>
+          </FilterPanel>
+          </div>
+          <nav aria-label="Decisões por estado" className="page-nav mt-3">
+            <ul className="flex flex-wrap gap-2">
+              {tabs.map((tab) => <li key={tab.view}><Link href={tab.href} aria-current={view === tab.view ? "page" : undefined}>{tab.label}</Link></li>)}
+            </ul>
+          </nav>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted" role="status">{total} {total === 1 ? "decisão" : "decisões"}</p>
             <LastUpdated date={updated._max.updatedAt} />

@@ -60,7 +60,16 @@ export default async function MetricasPage() {
 
   return (
     <>
-      <PageHead title="Métricas">
+      <PageHead
+        title="Métricas"
+        sections={[
+          { href: "#contratos", label: "Contratos públicos" },
+          { href: "#reunioes", label: "Reuniões e decisões" },
+          { href: "#orcamento", label: "Orçamento" },
+          { href: "#documentos", label: "Documentos publicados" },
+          { href: "#atualizacao", label: "Atualização dos dados" },
+        ]}
+      >
         <p>Indicadores simples sobre a atividade municipal. Descrevem valores e variações, sem os avaliar. O ano em curso está incompleto, por isso as comparações usam o último ano fechado.</p>
         <LastUpdated date={updated} className="mt-1" />
       </PageHead>
@@ -70,9 +79,9 @@ export default async function MetricasPage() {
         <section aria-labelledby="contratos">
           <SectionHead id="contratos" title="Contratos públicos">Contratos do Município e dos SMAS, pelo ano de celebração.</SectionHead>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <MetricCard label={`Contratos em ${complete}`} value={formatNumber(latestMetric(contractsNumber, complete) ?? 0)} trend={compareValues(latestMetric(contractsNumber, complete), latestMetric(contractsNumber, previous), previous)} source={contractSource} updated={updated} />
-            <MetricCard label={`Valor total em ${complete}`} value={formatEur(latestMetric(contractsValue, complete) ?? 0)} trend={compareValues(latestMetric(contractsValue, complete), latestMetric(contractsValue, previous), previous)} source={contractSource} updated={updated} />
-            <MetricCard label={`Valor médio em ${complete}`} value={formatEur(average(complete) ?? 0)} trend={compareValues(average(complete), average(previous), previous)} source={contractSource} updated={updated} />
+            <MetricCard label={`Contratos em ${complete}`} value={formatNumber(latestMetric(contractsNumber, complete) ?? 0)} trend={compareValues(latestMetric(contractsNumber, complete), latestMetric(contractsNumber, previous), previous)} source={contractSource} />
+            <MetricCard label={`Valor total em ${complete}`} value={formatEur(latestMetric(contractsValue, complete) ?? 0)} trend={compareValues(latestMetric(contractsValue, complete), latestMetric(contractsValue, previous), previous)} source={contractSource} />
+            <MetricCard label={`Valor médio em ${complete}`} value={formatEur(average(complete) ?? 0)} trend={compareValues(average(complete), average(previous), previous)} source={contractSource} />
           </dl>
           <div className="mt-4 grid gap-4 lg:grid-cols-3">
             <Bars title="Contratos por ano" unit="Contratos" format={formatNumber} rows={contractsNumber.map((row) => ({ label: row.period === String(year) ? `${row.period} (ano em curso)` : row.period, value: row.value }))} />
@@ -85,7 +94,7 @@ export default async function MetricasPage() {
         <section aria-labelledby="reunioes">
           <SectionHead id="reunioes" title="Reuniões e decisões">Inclui apenas o que foi transcrito de documentos oficiais. As decisões do Executivo Municipal estão incompletas, porque constam de PDF de acesso restrito a robôs.</SectionHead>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <MetricCard label={`Reuniões em ${complete}`} value={formatNumber(latestMetric(meetings, complete) ?? 0)} trend={compareValues(latestMetric(meetings, complete), latestMetric(meetings, previous), previous)} source={meetingSource} updated={updated} />
+            <MetricCard label={`Reuniões em ${complete}`} value={formatNumber(latestMetric(meetings, complete) ?? 0)} trend={compareValues(latestMetric(meetings, complete), latestMetric(meetings, previous), previous)} source={meetingSource} />
           </dl>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Bars title="Reuniões por ano" unit="Reuniões" format={formatNumber} rows={meetings.map((row) => ({ label: row.period, value: row.value }))} />

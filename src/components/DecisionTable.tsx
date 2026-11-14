@@ -1,8 +1,8 @@
 import type { Decision, Meeting, Source, Summary } from "@prisma/client";
 import Link from "next/link";
-import { BODY_LABEL, formatDateShort, voteSummary } from "@/lib/format";
+import { BODY_LABEL, formatDate, voteSummary } from "@/lib/format";
 import { SummaryBlock } from "./civic";
-import { LastUpdated, OutcomeBadge } from "./labels";
+import { OutcomeBadge } from "./labels";
 import { SourceChips } from "./Receipts";
 
 export type DecisionRow = Decision & { meeting: Meeting; sources: Source[] };
@@ -26,7 +26,7 @@ export function DecisionList({ decisions, summaries }: { decisions: DecisionRow[
           {decisions.map((decision) => (
             <tr key={decision.id} className="block border-t border-line p-3 first:border-t-0 md:table-row md:p-0">
               <td className="block whitespace-nowrap align-top text-muted md:table-cell md:px-3 md:py-3">
-                <Link href={`/reunioes/${decision.meeting.slug}`} className="underline">{formatDateShort(decision.meeting.date)}</Link>
+                <Link href={`/reunioes/${decision.meeting.slug}`} className="underline">{formatDate(decision.meeting.date)}</Link>
               </td>
               <td className="block align-top text-muted md:table-cell md:w-44 md:px-3 md:py-3">
                 {BODY_LABEL[decision.meeting.body]}
@@ -41,7 +41,6 @@ export function DecisionList({ decisions, summaries }: { decisions: DecisionRow[
                     <div className="mt-2"><SummaryBlock summary={summaries.get(decision.slug)!} heading={false} /></div>
                   </details>
                 ) : null}
-                <LastUpdated date={decision.updatedAt} className="mt-1 font-normal" />
               </td>
               <td className="mt-2 block align-top md:mt-0 md:table-cell md:w-44 md:px-3 md:py-3">
                 <OutcomeBadge outcome={decision.outcome} />

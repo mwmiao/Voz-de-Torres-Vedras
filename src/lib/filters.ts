@@ -36,6 +36,8 @@ export function contractWhere(params: SearchParams): Prisma.ContractWhereInput {
     signedAt: year ? { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } : undefined,
     awardingNif: params.entidade || undefined,
     procedureType: params.procedimento || undefined,
+    // Nome exato, como vem do Portal BASE: é o que as ligações de fornecedor enviam.
+    supplierName: params.fornecedor || undefined,
     searchText: q ? { contains: q } : undefined,
   };
 }

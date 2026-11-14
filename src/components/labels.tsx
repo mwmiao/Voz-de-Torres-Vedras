@@ -13,9 +13,10 @@ export function KindLabel({ kind }: { kind: ContentKind }) {
   return <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${className}`}>{label}</span>;
 }
 
-export function LastUpdated({ date, className = "" }: { date: Date | null | undefined; className?: string }) {
+/** `label` diz a que se refere a data, quando a página junta dados de origens diferentes. */
+export function LastUpdated({ date, className = "", label = "Última atualização" }: { date: Date | null | undefined; className?: string; label?: string }) {
   if (!date) return null;
-  return <p className={`text-xs text-muted ${className}`}>Última atualização: {formatDate(date)}</p>;
+  return <p className={`text-xs text-muted ${className}`}>{label}: {formatDate(date)}</p>;
 }
 
 export function CsvLink({ href, label = "Descarregar CSV" }: { href: string; label?: string }) {
@@ -31,13 +32,24 @@ export function OutcomeBadge({ outcome }: { outcome: Outcome }) {
   );
 }
 
-export function PageHead({ kicker, title, children }: { kicker?: ReactNode; title: string; children?: ReactNode }) {
+export type PageSection = { href: string; label: string };
+
+/** `sections` cria a linha «Nesta página», para saltar para cada parte de uma página longa. */
+export function PageHead({ kicker, title, children, sections }: { kicker?: ReactNode; title: string; children?: ReactNode; sections?: PageSection[] }) {
   return (
     <div className="border-b border-line bg-surface">
       <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
         {kicker ? <div className="mb-2">{kicker}</div> : null}
         <h1 className="font-serif text-3xl font-semibold md:text-4xl">{title}</h1>
         {children ? <div className="mt-3 max-w-3xl text-muted">{children}</div> : null}
+        {sections && sections.length > 1 ? (
+          <nav aria-label="Nesta página" className="page-nav mt-4">
+            <ul className="flex flex-wrap items-center gap-2">
+              <li className="text-sm font-semibold text-muted">Nesta página:</li>
+              {sections.map((section) => <li key={section.href}><a href={section.href}>{section.label}</a></li>)}
+            </ul>
+          </nav>
+        ) : null}
       </div>
     </div>
   );

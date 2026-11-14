@@ -1,9 +1,8 @@
 import type { AlertSeverity, AlertType, Prisma } from "@prisma/client";
 import type { Metadata } from "next";
-import Link from "next/link";
-import { AlertCard, Disclosure, EmptyState, ExternalLink, Pagination, SectionHead } from "@/components/civic";
+import { AlertCard, Disclosure, EmptyState, ExternalLink, FilterPanel, Pagination, SectionHead } from "@/components/civic";
 import { CsvLink, LastUpdated, PageHead } from "@/components/labels";
-import { activeAlertWhere, ALERT_TYPE_LABEL, expiredAlertWhere, FREGUESIAS, SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/alerts";
+import { activeAlertWhere, ALERT_TYPE_LABEL, expiredAlertWhere, FREGUESIAS, groupAlerts, SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/alerts";
 import { db } from "@/lib/db";
 import { queryString, type SearchParams } from "@/lib/filters";
 import { searchKey } from "@/lib/search";
@@ -54,30 +53,23 @@ export default async function AlertasPage({ searchParams }: { searchParams: Prom
     db.alert.count({ where: { AND: [where, expiredAlertWhere(now)] } }),
     db.alert.aggregate({ _max: { lastCheckedAt: true } }),
   ]);
-  const ordered = [...active].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+  const ordered = groupAlerts([...active].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)));
+  const archived = groupAlerts(archive);
   const filters = { ...params, pagina: undefined };
   const filtered = Object.values(filters).some(Boolean);
   const pages = Math.max(1, Math.ceil(archiveTotal / PAGE_SIZE));
 
   return (
     <>
-      <PageHead title="Alertas">
+      <PageHead title="Alertas" sections={[{ href: "#ativos", label: `Ativos (${ordered.length})` }, { href: "#arquivo", label: `Arquivo (${archiveTotal})` }]}>
         <p>Avisos oficiais para Torres Vedras. Só entram avisos de entidades públicas: nunca redes sociais ou relatos não verificados. Em emergência, ligue 112.</p>
-        <LastUpdated date={checked._max.lastCheckedAt} className="mt-1" />
+        <LastUpdated date={checked._max.lastCheckedAt} className="mt-1" label="Fontes verificadas pela última vez" />
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
 
-        <section aria-labelledby="ativos">
-          <SectionHead id="ativos" title={`Ativos (${ordered.length})`} action={<CsvLink href="/dados/alertas.csv" />} />
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            {ordered.map((alert) => <AlertCard key={alert.id} alert={alert} />)}
-          </div>
-          {ordered.length === 0 ? <EmptyState title={filtered ? "Nenhum alerta ativo corresponde aos filtros." : "Sem alertas oficiais ativos neste momento."}>Isto não garante que não existam: consulte também os portais oficiais abaixo.</EmptyState> : null}
-        </section>
-
-        <Disclosure summary="Pesquisar e filtrar" open={filtered}>
-          <form role="search" method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1.3fr_1fr_auto]">
-          <label className="text-sm font-medium">Pesquisar<input name="q" defaultValue={params.q ?? ""} className="field mt-1" /></label>
+        <FilterPanel clearHref={filtered ? "/alertas" : undefined}>
+          <form role="search" method="get" className="grid grid-cols-2 gap-3 lg:grid-cols-[1.5fr_1fr_1fr_1.3fr_1fr_auto]">
+          <label className="col-span-2 text-sm font-medium lg:col-span-1">Pesquisar<input name="q" defaultValue={params.q ?? ""} className="field mt-1" /></label>
           <label className="text-sm font-medium">Tipo
             <select name="tipo" defaultValue={params.tipo ?? ""} className="field mt-1">
               <option value="">Todos</option>
@@ -97,15 +89,22 @@ export default async function AlertasPage({ searchParams }: { searchParams: Prom
             </select>
           </label>
           <label className="text-sm font-medium">Data de publicação<input type="date" name="data" defaultValue={params.data ?? ""} className="field mt-1" /></label>
-          <button type="submit" className="btn self-end">Aplicar</button>
+          <button type="submit" className="btn col-span-2 self-end lg:col-span-1">Aplicar</button>
         </form>
-        </Disclosure>
-        {filtered ? <p className="text-sm"><Link href="/alertas" className="underline">Limpar filtros</Link></p> : null}
+        </FilterPanel>
+
+        <section aria-labelledby="ativos">
+          <SectionHead id="ativos" title={`Ativos (${ordered.length})`} action={<CsvLink href="/dados/alertas.csv" />} />
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {ordered.map(({ alert, also }) => <AlertCard key={alert.id} alert={alert} also={also} />)}
+          </div>
+          {ordered.length === 0 ? <EmptyState title={filtered ? "Nenhum alerta ativo corresponde aos filtros." : "Sem alertas oficiais ativos neste momento."}>Isto não garante que não existam: consulte também os portais oficiais abaixo.</EmptyState> : null}
+        </section>
 
         <section aria-labelledby="arquivo">
           <SectionHead id="arquivo" title={`Arquivo (${archiveTotal})`}>Avisos terminados, por ordem do mais recente.</SectionHead>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            {archive.map((alert) => <AlertCard key={alert.id} alert={alert} />)}
+            {archived.map(({ alert, also }) => <AlertCard key={alert.id} alert={alert} also={also} />)}
           </div>
           {archive.length === 0 ? <EmptyState title="Sem avisos no arquivo." /> : null}
           <Pagination page={page} pages={pages} link={(target) => `/alertas?${queryString(filters, { pagina: String(target) })}#arquivo`} />

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bars } from "@/components/Bars";
-import { Disclosure, EmptyState, MetricCard, Pagination, SectionHead, SummaryBlock } from "@/components/civic";
+import { EmptyState, FilterPanel, MetricCard, Pagination, SectionHead, SummaryBlock } from "@/components/civic";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt, SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { contractOrder, contractWhere, queryString, type SearchParams } from "@/lib/filters";
-import { formatDate, formatDateShort, formatEur, formatNumber } from "@/lib/format";
+import { displayTitle, formatDate, formatEur, formatNumber } from "@/lib/format";
 import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";
@@ -50,105 +50,150 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
   const summaries = await summaryMap("contrato", contracts.map((contract) => contract.baseId));
   const signed = years.map((row) => row.signedAt?.getUTCFullYear()).filter((year): year is number => Boolean(year));
   const yearOptions = [...new Set(signed)].sort((a, b) => b - a);
+  // O período a que os totais dizem respeito fica sempre escrito, para ninguém ter de o adivinhar.
+  const period = params.ano && yearOptions.includes(Number(params.ano))
+    ? `em ${params.ano}`
+    : yearOptions.length > 1 ? `de ${yearOptions[yearOptions.length - 1]} a ${yearOptions[0]}` : yearOptions.length === 1 ? `em ${yearOptions[0]}` : "";
+  const supplierLink = (name: string) => `/contratos?${queryString({ ano: params.ano, entidade: params.entidade, fornecedor: name })}#lista`;
+  const withoutSupplier = `/contratos?${queryString({ ...filters, fornecedor: undefined })}#lista`;
 
   return (
     <>
-      <PageHead title="Contratos" kicker={<KindLabel kind="REGISTO_OFICIAL" />}>
+      <PageHead
+        title="Contratos"
+        kicker={<KindLabel kind="REGISTO_OFICIAL" />}
+        sections={[
+          { href: "#lista", label: "Lista de contratos" },
+          { href: "#totais", label: "Totais por procedimento e fornecedor" },
+          { href: "#procedimentos", label: "Concursos recentes" },
+          { href: "#portais", label: "Portais oficiais" },
+        ]}
+      >
         <p>Contratos do Município e dos SMAS registados no Portal BASE. A presença de um contrato ou fornecedor aqui não implica qualquer juízo sobre ele.</p>
         <LastUpdated date={stats._max.updatedAt} className="mt-1" />
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-        <dl className="grid gap-3 sm:grid-cols-2">
-          <MetricCard label={params.ano ? `Contratos em ${params.ano}` : "Contratos"} value={formatNumber(count)} />
-          <MetricCard label="Valor contratual somado" value={formatEur(stats._sum.priceEur ?? 0)} />
-        </dl>
+        <FilterPanel clearHref={filtered ? "/contratos" : undefined}>
+          <form role="search" method="get" action="#lista" className="grid grid-cols-2 gap-3 lg:grid-cols-[2fr_auto_1fr_1fr_1fr_auto]">
+            {params.fornecedor ? <input type="hidden" name="fornecedor" value={params.fornecedor} /> : null}
+            <label className="col-span-2 text-sm font-medium lg:col-span-1">Pesquisar<input name="q" defaultValue={params.q ?? ""} className="field mt-1" placeholder="Objeto ou fornecedor" /></label>
+            <label className="text-sm font-medium">Ano
+              <select name="ano" defaultValue={params.ano ?? ""} className="field mt-1">
+                <option value="">Todos</option>
+                {yearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </label>
+            <label className="text-sm font-medium">Entidade adjudicante
+              <select name="entidade" defaultValue={params.entidade ?? ""} className="field mt-1">
+                <option value="">Todas</option>
+                <option value="502173653">Município de Torres Vedras</option>
+                <option value="680015973">SMAS de Torres Vedras</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium">Procedimento
+              <select name="procedimento" defaultValue={params.procedimento ?? ""} className="field mt-1">
+                <option value="">Todos</option>
+                {allProcedures.map(({ procedureType }) => <option key={procedureType}>{procedureType}</option>)}
+              </select>
+            </label>
+            <label className="text-sm font-medium">Ordenar
+              <select name="ordem" defaultValue={params.ordem ?? ""} className="field mt-1">
+                <option value="">Mais recentes</option>
+                <option value="valor">Maior valor</option>
+                <option value="fornecedor">Fornecedor</option>
+              </select>
+            </label>
+            <button type="submit" className="btn col-span-2 self-end lg:col-span-1">Aplicar</button>
+          </form>
+        </FilterPanel>
 
-        <Disclosure summary="Pesquisar e filtrar" open={filtered}>
-          <form role="search" method="get" action="#lista" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_auto_1fr_1fr_1fr_auto]">
-          <label className="text-sm font-medium">Pesquisar<input name="q" defaultValue={params.q ?? ""} className="field mt-1" placeholder="Objeto ou fornecedor" /></label>
-          <label className="text-sm font-medium">Ano
-            <select name="ano" defaultValue={params.ano ?? ""} className="field mt-1">
-              <option value="">Todos</option>
-              {yearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
-            </select>
-          </label>
-          <label className="text-sm font-medium">Entidade adjudicante
-            <select name="entidade" defaultValue={params.entidade ?? ""} className="field mt-1">
-              <option value="">Todas</option>
-              <option value="502173653">Município de Torres Vedras</option>
-              <option value="680015973">SMAS de Torres Vedras</option>
-            </select>
-          </label>
-          <label className="text-sm font-medium">Procedimento
-            <select name="procedimento" defaultValue={params.procedimento ?? ""} className="field mt-1">
-              <option value="">Todos</option>
-              {allProcedures.map(({ procedureType }) => <option key={procedureType}>{procedureType}</option>)}
-            </select>
-          </label>
-          <label className="text-sm font-medium">Ordenar
-            <select name="ordem" defaultValue={params.ordem ?? ""} className="field mt-1">
-              <option value="">Mais recentes</option>
-              <option value="valor">Maior valor</option>
-              <option value="fornecedor">Fornecedor</option>
-            </select>
-          </label>
-          <button type="submit" className="btn self-end">Aplicar</button>
-        </form>
-        </Disclosure>
+        {params.fornecedor ? (
+          <p className="rounded-lg border border-line bg-record-soft px-4 py-3 text-sm" role="status">
+            A mostrar só os contratos de <strong>{params.fornecedor}</strong>. <Link href={withoutSupplier} className="underline">Ver todos os fornecedores</Link>
+          </p>
+        ) : null}
+
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <MetricCard label={`Contratos ${period}`.trim()} value={formatNumber(count)} note={filtered ? "Com os filtros escolhidos" : "Município e SMAS"} />
+          <MetricCard label={`Valor contratual somado ${period}`.trim()} value={formatEur(stats._sum.priceEur ?? 0)} note={filtered ? "Soma dos contratos que correspondem aos filtros" : "Soma de todos os contratos registados"} />
+        </dl>
 
         <section aria-labelledby="lista">
           <SectionHead id="lista" title={`Lista de contratos (${formatNumber(count)})`} action={<CsvLink href={`/dados/contratos.csv?${queryString(filters)}`} />} />
           {contracts.length > 0 ? (
-            <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-surface">
-              {contracts.map((contract) => {
-                const summary = summaries.get(contract.baseId);
-                return (
-                  <li key={contract.id} className="p-4">
-                    <article>
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-                        <h3 className="min-w-0 flex-1 font-medium [overflow-wrap:anywhere]">{contract.title}</h3>
-                        <p className="whitespace-nowrap font-semibold tabular-nums">{formatEur(contract.priceEur)}</p>
-                      </div>
-                      <dl className="mt-1 grid gap-x-3 text-sm sm:grid-cols-[auto_1fr]">
-                        <dt className="text-muted">Fornecedor</dt><dd>{contract.supplierName}</dd>
-                        <dt className="text-muted">Adjudicante</dt><dd>{contract.awardingBody}</dd>
-                        <dt className="text-muted">Data</dt><dd>{contract.signedAt ? formatDate(contract.signedAt) : "Não indicada na fonte"}</dd>
-                        <dt className="text-muted">Procedimento</dt><dd>{contract.procedureType}</dd>
-                      </dl>
-                      {contract.modifications.map((modification) => (
-                        <p key={modification.id} className="mt-1 text-sm text-muted">
-                          Modificação{modification.date ? ` de ${formatDateShort(modification.date)}` : ""}
-                          {modification.newPriceEur ? `: novo valor ${formatEur(modification.newPriceEur)}` : ""}
-                        </p>
-                      ))}
-                      <div className="mt-2"><SourceChips sources={contract.sources} /></div>
-                      {summary ? (
-                        <details className="mt-2">
-                          <summary className="cursor-pointer text-sm underline">Resumo simples</summary>
-                          <div className="mt-2"><SummaryBlock summary={summary} heading={false} /></div>
-                        </details>
-                      ) : null}
-                    </article>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="mt-3 overflow-hidden rounded-lg border border-line bg-surface">
+              {/* Em ecrãs pequenos cada contrato é um bloco; em ecrãs largos, uma linha de tabela. */}
+              <table className="w-full border-collapse text-left text-sm">
+                <caption className="sr-only">Contratos, com data, objeto, fornecedor, procedimento, valor e fonte</caption>
+                <thead className="hidden bg-paper text-xs text-muted md:table-header-group">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 font-semibold">Data</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Contrato</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Fornecedor</th>
+                    <th scope="col" className="px-3 py-2 text-right font-semibold">Valor</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Fonte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contracts.map((contract) => {
+                    const summary = summaries.get(contract.baseId);
+                    return (
+                      <tr key={contract.id} className="block border-t border-line p-3 first:border-t-0 md:table-row md:p-0">
+                        <td className="block whitespace-nowrap align-top text-muted md:table-cell md:px-3 md:py-3">
+                          {contract.signedAt ? formatDate(contract.signedAt) : "Data não indicada"}
+                        </td>
+                        <td className="mt-1 block align-top md:mt-0 md:table-cell md:px-3 md:py-3">
+                          <span className="font-medium [overflow-wrap:anywhere]">{displayTitle(contract.title)}</span>
+                          <span className="mt-0.5 block text-xs text-muted">{contract.procedureType} · {contract.awardingBody}</span>
+                          {contract.modifications.map((modification) => (
+                            <span key={modification.id} className="mt-0.5 block text-xs text-muted">
+                              Modificação{modification.date ? ` de ${formatDate(modification.date)}` : ""}
+                              {modification.newPriceEur ? `: novo valor ${formatEur(modification.newPriceEur)}` : ""}
+                            </span>
+                          ))}
+                          {summary ? (
+                            <details className="mt-1">
+                              <summary className="cursor-pointer text-sm underline">Resumo simples</summary>
+                              <div className="mt-2"><SummaryBlock summary={summary} heading={false} /></div>
+                            </details>
+                          ) : null}
+                        </td>
+                        <td className="mt-1 block align-top md:mt-0 md:table-cell md:w-56 md:px-3 md:py-3">
+                          <span className="text-muted md:hidden">Fornecedor: </span>
+                          {contract.supplierIsPerson || params.fornecedor === contract.supplierName
+                            ? contract.supplierName
+                            : <Link href={supplierLink(contract.supplierName)} className="underline" title="Ver todos os contratos deste fornecedor">{contract.supplierName}</Link>}
+                        </td>
+                        <td className="mt-1 block whitespace-nowrap align-top font-semibold tabular-nums md:mt-0 md:table-cell md:px-3 md:py-3 md:text-right">
+                          {formatEur(contract.priceEur)}
+                        </td>
+                        <td className="mt-2 block align-top md:mt-0 md:table-cell md:px-3 md:py-3">
+                          <SourceChips sources={contract.sources} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : <div className="mt-3"><EmptyState title="Nenhum contrato corresponde aos filtros."><Link href="/contratos" className="underline">Limpar filtros</Link></EmptyState></div>}
           <Pagination page={page} pages={pages} link={pageLink} />
         </section>
 
-        <Disclosure summary="Contratos por procedimento, categoria e fornecedor">
-          <p className="text-sm text-muted">Somas descritivas para orientar a consulta. Não indicam qualquer irregularidade.</p>
+        <section aria-labelledby="totais">
+          <SectionHead id="totais" title="Totais por procedimento, categoria e fornecedor">
+            Somas {period} dos contratos {filtered ? "que correspondem aos filtros" : "registados"}. São descritivas, para orientar a consulta, e não indicam qualquer irregularidade. Pessoas singulares não entram na lista de fornecedores.
+          </SectionHead>
           <div className="mt-3 grid gap-4 lg:grid-cols-3">
             <Bars title="Por tipo de procedimento" rows={procedures.map((row) => ({ label: row.procedureType, value: Number(row._sum.priceEur ?? 0), detail: `${row._count._all} contratos` }))} />
             <Bars title="Por categoria CPV" rows={cpvs.map((row) => ({ label: row.cpvLabel ?? "Sem categoria", value: Number(row._sum.priceEur ?? 0) }))} />
             <Bars title="Por fornecedor" rows={suppliers.map((row) => ({ label: row.supplierName, value: Number(row._sum.priceEur ?? 0), detail: `${row._count._all} contratos` }))} />
           </div>
-        </Disclosure>
+        </section>
 
         <section aria-labelledby="procedimentos">
-          <h2 id="procedimentos" className="font-serif text-2xl font-semibold">Procedimentos recentes</h2>
-          <p className="text-sm text-muted">Concursos e anúncios publicados. <Link href="/fontes?tipo=CONCURSO" className="underline">Ver todos</Link></p>
+          <h2 id="procedimentos" className="font-serif text-2xl font-semibold">Concursos recentes</h2>
+          <p className="text-sm text-muted">Concursos e anúncios de procedimento publicados, antes de haver contrato. <Link href="/fontes?tipo=CONCURSO" className="underline">Ver todos</Link></p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {tenders.map((tender) => <Receipt key={tender.id} source={tender} />)}
           </div>

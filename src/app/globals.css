@@ -24,7 +24,7 @@
 }
 
 html {
-  scroll-padding-top: 5.5rem;
+  scroll-padding-top: 8.5rem;
 }
 
 body {
@@ -53,6 +53,33 @@ a {
   background: var(--color-surface);
   padding: 0.6rem 0.75rem;
   font-size: 1rem;
+}
+
+.site-search {
+  min-height: 40px;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.page-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-paper);
+  padding: 0.25rem 0.8rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.page-nav a:hover,
+.page-nav a[aria-current="page"] {
+  border-color: var(--color-record);
+  background: var(--color-record-soft);
 }
 
 .btn {

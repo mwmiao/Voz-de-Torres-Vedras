@@ -1,11 +1,11 @@
 import type { Body, Meeting } from "@prisma/client";
 import Link from "next/link";
-import { AlertCard, EmptyState, ExternalLink, MetricCard, SectionHead, TrendText } from "@/components/civic";
+import { alertPeriod, EmptyState, ExternalLink, MetricCard, SectionHead, SeverityBadge, TrendText } from "@/components/civic";
 import { OutcomeBadge } from "@/components/labels";
-import { activeAlertWhere, SEVERITY_ORDER } from "@/lib/alerts";
+import { activeAlertWhere, groupAlerts, SEVERITY_ORDER } from "@/lib/alerts";
 import { db } from "@/lib/db";
 import { SOURCED_DECISION } from "@/lib/filters";
-import { BODY_LABEL, formatDate, formatEur, formatNumber, formatTime } from "@/lib/format";
+import { BODY_LABEL, displayTitle, formatDate, formatEur, formatNumber, formatTime } from "@/lib/format";
 import { latestMetric, metricSeries } from "@/lib/metrics";
 import { SUMMARY_TYPE_LABEL } from "@/lib/summaries";
 import { compareValues } from "@/lib/trends";
@@ -15,9 +15,16 @@ export const dynamic = "force-dynamic";
 const TASKS = [
   { href: "/reunioes", title: "O que foi decidido", text: "Reuniões, votos e documentos" },
   { href: "/contratos", title: "Como se gasta o dinheiro", text: "Contratos e orçamento" },
-  { href: "/alertas", title: "Avisos atuais", text: "Água, trânsito, tempo e serviços" },
-  { href: "/seguranca", title: "Segurança", text: "Crimes registados no concelho" },
+  { href: "/alertas", title: "Alertas atuais", text: "Água, trânsito, tempo e serviços" },
+  { href: "/dossies", title: "Assuntos em curso", text: "Dossiês: hospital, habitação, impostos" },
+  { href: "/seguranca", title: "Segurança", text: "Ocorrências recentes e crimes por ano" },
 ];
+
+/** Onde cada órgão publica as convocatórias, para quando a próxima data ainda não foi recolhida. */
+const EDITAIS: Record<Body, string> = {
+  ASSEMBLEIA_MUNICIPAL: "https://www.am-tvedras.pt/sessoes/editais/",
+  EXECUTIVO_MUNICIPAL: "https://www.cm-tvedras.pt/documentos/editaisatas/editaiscm",
+};
 
 const HOME_ALERTS = 3;
 
@@ -29,7 +36,11 @@ function NextMeeting({ body, next, last }: { body: Body; next: Meeting | null; l
         <p className="mt-1 text-sm">
           Próxima reunião: <Link href={`/reunioes/${next.slug}`} className="underline">{formatDate(next.date)}{next.hasTime ? `, ${formatTime(next.date)}` : ""}</Link>
         </p>
-      ) : <p className="mt-1 text-sm text-muted">Próxima data ainda não publicada.</p>}
+      ) : (
+        <p className="mt-1 text-sm text-muted">
+          Próxima data ainda não publicada. <ExternalLink href={EDITAIS[body]}>Ver editais oficiais</ExternalLink>
+        </p>
+      )}
       {last ? <p className="mt-1 text-sm">Última reunião: <Link href={`/reunioes/${last.slug}`} className="underline">{formatDate(last.date)}</Link></p> : null}
     </div>
   );
@@ -37,9 +48,8 @@ function NextMeeting({ body, next, last }: { body: Body; next: Meeting | null; l
 
 export default async function Home() {
   const now = new Date();
-  const [alerts, activeCount, summaries, nextAm, nextCm, lastAm, lastCm, decisions, contracts, crime, contractCount, contractValue, meetingsByYear] = await Promise.all([
+  const [alerts, summaries, nextAm, nextCm, lastAm, lastCm, decisions, contracts, crime, contractCount, contractValue, meetingsByYear] = await Promise.all([
     db.alert.findMany({ where: activeAlertWhere(now), orderBy: [{ startsAt: "desc" }] }),
-    db.alert.count({ where: activeAlertWhere(now) }),
     // Uma de cada tipo, para que uma série de contratos não esconda decisões ou reuniões.
     Promise.all(
       ["decisao", "reuniao", "contrato", "procedimento"].map((entityType) =>
@@ -64,7 +74,9 @@ export default async function Home() {
   ]);
 
   const updates = summaries.flatMap((summary) => (summary ? [summary] : []));
-  const shown = [...alerts].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)).slice(0, HOME_ALERTS);
+  // O mesmo aviso publicado por duas entidades conta uma vez.
+  const active = groupAlerts([...alerts].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)));
+  const shown = active.slice(0, HOME_ALERTS);
   const year = now.getUTCFullYear();
   const lastYear = String(year - 1);
   const beforeYear = String(year - 2);
@@ -73,28 +85,11 @@ export default async function Home() {
   return (
     <>
       <h1 className="sr-only">Voz de Torres Vedras: dados públicos de Torres Vedras, com fontes oficiais</h1>
-      <section aria-labelledby="alertas-ativos" className="border-b border-line bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-5">
-          <SectionHead
-            id="alertas-ativos"
-            title={activeCount > 0 ? `Alertas ativos (${activeCount})` : "Alertas ativos"}
-            action={<Link href="/alertas" className="text-sm underline">Ver todos os alertas</Link>}
-          />
-          {shown.length > 0 ? (
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              {shown.map((alert) => <AlertCard key={alert.id} alert={alert} compact />)}
-            </div>
-          ) : (
-            <p className="mt-2 text-sm text-muted">Sem alertas oficiais ativos para Torres Vedras nas fontes acompanhadas.</p>
-          )}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-6xl px-4 pb-2 pt-8">
-        <p className="max-w-3xl font-serif text-2xl font-semibold leading-tight md:text-3xl">Dados públicos de Torres Vedras, com fontes oficiais.</p>
-        <p className="mt-2 max-w-2xl text-muted">O que o Município decide e gasta, explicado de forma simples e sempre com o documento de origem.</p>
-        <nav aria-label="O que procura?" className="mt-5">
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mx-auto max-w-6xl px-4 pb-2 pt-6">
+        <p className="max-w-3xl font-serif text-xl font-semibold leading-tight md:text-3xl">Dados públicos de Torres Vedras, com fontes oficiais.</p>
+        <p className="mt-2 hidden max-w-2xl text-muted sm:block">O que o Município decide e gasta, explicado de forma simples e sempre com o documento de origem.</p>
+        <nav aria-label="O que procura?" className="mt-4">
+          <ul className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
             {TASKS.map((task) => (
               <li key={task.href}>
                 <Link href={task.href} className="task-link">
@@ -105,6 +100,35 @@ export default async function Home() {
             ))}
           </ul>
         </nav>
+      </section>
+
+      <section aria-labelledby="alertas-ativos" className="mx-auto max-w-6xl px-4 pt-6">
+        <SectionHead
+          id="alertas-ativos"
+          title={active.length > 0 ? `Alertas ativos (${active.length})` : "Alertas ativos"}
+          action={<Link href="/alertas" className="text-sm underline">{active.length > shown.length ? `Ver os ${active.length} alertas` : "Ver alertas e arquivo"}</Link>}
+        />
+        {shown.length > 0 ? (
+          <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-surface">
+            {shown.map(({ alert }) => (
+              <li key={alert.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-sm">
+                <SeverityBadge severity={alert.severity} />
+                <Link href={`/alertas#alerta-${alert.id}`} className="min-w-0 font-semibold underline">{displayTitle(alert.title)}</Link>
+                <span className="text-muted">{alertPeriod(alert)} · {alert.geographicArea}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted">Sem alertas oficiais ativos para Torres Vedras nas fontes acompanhadas.</p>
+        )}
+      </section>
+
+      <section aria-labelledby="reunioes-proximas" className="mx-auto max-w-6xl px-4 pt-8">
+        <SectionHead id="reunioes-proximas" title="Próximas reuniões" action={<Link href="/reunioes" className="text-sm underline">Ver todas as reuniões</Link>} />
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <NextMeeting body="ASSEMBLEIA_MUNICIPAL" next={nextAm} last={lastAm} />
+          <NextMeeting body="EXECUTIVO_MUNICIPAL" next={nextCm} last={lastCm} />
+        </div>
       </section>
 
       <section aria-labelledby="ultimas" className="mx-auto max-w-6xl px-4 py-8">
@@ -125,7 +149,7 @@ export default async function Home() {
       </section>
 
       <section aria-labelledby="numeros" className="mx-auto max-w-6xl px-4 pb-8">
-        <SectionHead id="numeros" title="Números principais" action={<Link href="/metricas" className="text-sm underline">Ver todas as métricas</Link>} />
+        <SectionHead id="numeros" title="Métricas principais" action={<Link href="/metricas" className="text-sm underline">Ver todas as métricas</Link>} />
         <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             label={`Contratos celebrados em ${lastYear}`}
@@ -151,14 +175,6 @@ export default async function Home() {
         </dl>
       </section>
 
-      <section aria-labelledby="reunioes-proximas" className="mx-auto max-w-6xl px-4 pb-8">
-        <SectionHead id="reunioes-proximas" title="Reuniões" action={<Link href="/reunioes" className="text-sm underline">Ver todas as reuniões</Link>} />
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <NextMeeting body="ASSEMBLEIA_MUNICIPAL" next={nextAm} last={lastAm} />
-          <NextMeeting body="EXECUTIVO_MUNICIPAL" next={nextCm} last={lastCm} />
-        </div>
-      </section>
-
       <div className="mx-auto grid max-w-6xl gap-8 px-4 pb-8 md:grid-cols-2">
         <section aria-labelledby="decisoes-recentes" className="min-w-0">
           <SectionHead id="decisoes-recentes" title="Decisões recentes" action={<Link href="/reunioes" className="text-sm underline">Ver todas</Link>} />
@@ -179,7 +195,7 @@ export default async function Home() {
           <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-surface">
             {contracts.map((contract) => (
               <li key={contract.id} className="p-3 text-sm">
-                <p className="font-medium">{contract.title}</p>
+                <p className="font-medium">{displayTitle(contract.title)}</p>
                 <p className="mt-1 text-muted">{formatEur(contract.priceEur)}{contract.signedAt ? ` · ${formatDate(contract.signedAt)}` : ""}</p>
               </li>
             ))}

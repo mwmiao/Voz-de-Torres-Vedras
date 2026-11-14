@@ -24,20 +24,23 @@ export default async function ResumosPage({ searchParams }: { searchParams: Prom
     available: params.todos ? undefined : true,
     searchText: q ? { contains: q } : undefined,
   };
-  const [summaries, total] = await Promise.all([
+  const [summaries, total, byType] = await Promise.all([
     db.summary.findMany({ where, orderBy: [{ date: { sort: "desc", nulls: "last" } }, { title: "asc" }], skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
     db.summary.count({ where }),
+    db.summary.groupBy({ by: ["entityType"], where: { ...where, entityType: undefined }, _count: { _all: true }, orderBy: { _count: { entityType: "desc" } } }),
   ]);
   const filters = { ...params, pagina: undefined };
+  const allTypes = byType.reduce((sum, row) => sum + row._count._all, 0);
+  const typeLink = (tipo?: string) => `/resumos?${queryString({ ...filters, tipo })}`;
 
   return (
     <>
       <PageHead title="Resumos simples">
-        <p>Explicações curtas de registos municipais. São geradas por regras a partir de dados oficiais e não substituem os documentos. Em caso de dúvida, prevalece a fonte.</p>
+        <p>Pesquise em decisões, reuniões, contratos, concursos e documentos. Cada resultado tem uma explicação curta, gerada por regras a partir de dados oficiais, que não substitui o documento. Em caso de dúvida, prevalece a fonte.</p>
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-4 px-4 py-8">
         <form role="search" method="get" className="grid gap-3 rounded-lg border border-line bg-surface p-4 sm:grid-cols-[2fr_1fr_auto]">
-          <label className="text-sm font-medium">Pesquisar<input name="q" defaultValue={params.q ?? ""} className="field mt-1" /></label>
+          <label className="text-sm font-medium">Pesquisar<input type="search" name="q" defaultValue={params.q ?? ""} className="field mt-1" placeholder="Por exemplo: hospital, IMI, repavimentação" /></label>
           <label className="text-sm font-medium">Tipo
             <select name="tipo" defaultValue={params.tipo ?? ""} className="field mt-1">
               <option value="">Todos</option>
@@ -47,9 +50,25 @@ export default async function ResumosPage({ searchParams }: { searchParams: Prom
           <button type="submit" className="btn self-end">Pesquisar</button>
         </form>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p role="status" className="text-sm text-muted">{formatNumber(total)} resumos</p>
+          <p role="status" className="text-sm text-muted">
+            {total === 1 ? "1 resultado" : `${formatNumber(total)} resultados`}{params.q ? <> para «<strong>{params.q}</strong>»</> : null}
+          </p>
           <CsvLink href="/dados/resumos.csv" />
         </div>
+        {byType.length > 1 ? (
+          <nav aria-label="Resultados por tipo" className="page-nav">
+            <ul className="flex flex-wrap gap-2">
+              <li><Link href={typeLink(undefined)} aria-current={!entityType ? "page" : undefined}>Todos ({formatNumber(allTypes)})</Link></li>
+              {byType.map((row) => (
+                <li key={row.entityType}>
+                  <Link href={typeLink(row.entityType)} aria-current={entityType === row.entityType ? "page" : undefined}>
+                    {SUMMARY_TYPE_LABEL[row.entityType] ?? "Registo"} ({formatNumber(row._count._all)})
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ) : null}
         <h2 className="sr-only">Resultados</h2>
         <div className="grid gap-3 md:grid-cols-2">
           {summaries.map((summary) => <SummaryBlock key={summary.id} summary={summary} />)}

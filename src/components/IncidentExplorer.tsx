@@ -106,6 +106,16 @@ export function IncidentExplorer({ incidents, freguesias, initial, bounds }: Pro
     document.getElementById("mapa-ocorrencias")?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
 
+  // Sem nenhuma ocorrência nas duas semanas, o mapa e os filtros não têm nada para mostrar.
+  if (incidents.length === 0) {
+    return (
+      <div className="rounded-lg border border-line bg-surface p-4" role="status">
+        <p className="font-semibold">Sem ocorrências publicadas nas últimas duas semanas, em todo o concelho.</p>
+        <p className="mt-1 text-sm text-muted">O mapa e os filtros voltam a aparecer quando houver ocorrências neste período.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <IncidentFilters

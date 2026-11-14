@@ -2,15 +2,37 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Bars } from "@/components/Bars";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
-import { Disclosure, ScrollTable } from "@/components/civic";
+import { Disclosure, ExternalLink, ScrollTable } from "@/components/civic";
 import { OfficialBadge, SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { formatDate, formatEur } from "@/lib/format";
+import { searchKey } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Orçamento", description: "Orçamento, despesa e situação financeira do Município de Torres Vedras, com fontes oficiais." };
 
 const HISTORY_LABEL = "Total de disponibilidades";
+
+/** Ordem de leitura da situação financeira: primeiro o total e o limite, depois as partes. */
+const FINANCIAL_ORDER = ["divida total da autarquia", "limite da divida", "medio e longo prazo", "curto prazo", "disponibilidades"];
+const rank = (label: string) => {
+  const index = FINANCIAL_ORDER.findIndex((key) => searchKey(label).includes(key));
+  return index === -1 ? FINANCIAL_ORDER.length : index;
+};
+
+/** Contexto geral escrito por esta plataforma, não retirado dos documentos. */
+const GLOSSARY = [
+  { term: "SMAS", text: "Serviços Municipalizados de Água e Saneamento. Têm orçamento próprio, aprovado em conjunto com o da Câmara." },
+  { term: "Despesas de capital", text: "Investimento: obras, edifícios, equipamentos e terrenos. O resto é despesa corrente, como salários, energia e serviços." },
+  { term: "Saldo de gerência", text: "Dinheiro que sobrou do ano anterior e que é somado ao orçamento do ano em curso, numa revisão orçamental." },
+  { term: "Revisão orçamental", text: "Alteração ao orçamento durante o ano, aprovada pela Assembleia Municipal." },
+  { term: "Disponibilidades", text: "Dinheiro em caixa e em contas bancárias numa certa data." },
+  { term: "Dívida de médio e longo prazo", text: "Empréstimos e locações a pagar em mais de um ano." },
+  { term: "Limite da dívida total", text: "Valor máximo de dívida que a lei permite ao Município, calculado a partir da receita dos últimos anos." },
+];
+
+const million = (value: number) => `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(value / 1_000_000)} milhões de euros`;
+const percent = (value: number) => `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(value * 100)}%`;
 
 const PORTALS = [
   { label: "Documentos de gestão da Câmara Municipal", url: "https://www.cm-tvedras.pt/documentos/gestao/" },
@@ -29,23 +51,68 @@ export default async function OrcamentoPage() {
   const revenue = entries.filter((entry) => entry.kind === "RECEITA");
   const financial = entries.filter((entry) => entry.kind === "SITUACAO_FINANCEIRA");
   const asOf = financial.map((entry) => entry.asOf).filter((date) => date !== null).sort((a, b) => b.getTime() - a.getTime())[0];
-  const facts = financial.filter((entry) => entry.asOf?.getTime() === asOf?.getTime());
+  const facts = financial.filter((entry) => entry.asOf?.getTime() === asOf?.getTime()).sort((a, b) => rank(a.label) - rank(b.label));
   const history = financial
     .filter((entry) => entry.label === HISTORY_LABEL)
     .sort((a, b) => a.asOf!.getTime() - b.asOf!.getTime());
   const updated = entries.map((entry) => entry.updatedAt).sort((a, b) => b.getTime() - a.getTime())[0];
+
+  // Resumo: só frases cujos valores existem nos registos. A percentagem é uma conta simples entre dois valores oficiais.
+  const find = (list: typeof entries, key: string) => list.find((entry) => searchKey(entry.label).includes(key));
+  const debt = find(facts, "divida total da autarquia");
+  const limit = find(facts, "limite da divida");
+  const cash = find(facts, "total de disponibilidades");
+  const budgetTotal = summary.reduce((sum, entry) => sum + Number(entry.amountEur), 0);
+  const overview = [
+    summary.length > 0
+      ? `O orçamento de 2026 soma cerca de ${million(budgetTotal)}: ${summary.map((entry) => `${entry.label.replace(/^Orçamento d[aeo]s? /, "")}, ${million(Number(entry.amountEur))}`).join("; ")}.`
+      : null,
+    debt && limit && Number(limit.amountEur) > 0
+      ? `A dívida total comunicada é de ${million(Number(debt.amountEur))}, o que corresponde a ${percent(Number(debt.amountEur) / Number(limit.amountEur))} do limite da dívida total (${million(Number(limit.amountEur))}).${debt.note ? " Este valor está incompleto, segundo a própria fonte: ver a nota abaixo." : ""}`
+      : null,
+    cash && asOf ? `A ${formatDate(asOf)}, o Município tinha ${million(Number(cash.amountEur))} em caixa e contas bancárias.` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  // Documentos agrupados pelo conjunto a que pertencem: «2025, Prestação de contas final: Balanço».
+  const docGroups = new Map<string, { id: string; url: string; label: string }[]>();
+  for (const doc of docs) {
+    const cut = doc.title.indexOf(": ");
+    const group = cut > 0 ? doc.title.slice(0, cut) : "Outros documentos";
+    docGroups.set(group, [...(docGroups.get(group) ?? []), { id: doc.id, url: doc.url, label: cut > 0 ? doc.title.slice(cut + 2) : doc.title }]);
+  }
 
   const amount = (entry: { approximate: boolean; amountEur: { toString(): string } }) =>
     `${entry.approximate ? "Cerca de " : ""}${formatEur(entry.amountEur)}`;
 
   return (
     <>
-      <PageHead title="Orçamento" kicker={<KindLabel kind="REGISTO_OFICIAL" />}>
+      <PageHead
+        title="Orçamento"
+        kicker={<KindLabel kind="REGISTO_OFICIAL" />}
+        sections={[
+          { href: "#em-resumo", label: "Em resumo" },
+          { href: "#resumo", label: "Orçamento de 2026" },
+          { href: "#despesa", label: "Despesa e receita" },
+          { href: "#financeira", label: "Dívida e dinheiro em caixa" },
+          { href: "#documentos", label: "Documentos" },
+        ]}
+      >
         <p>Quanto o Município prevê gastar e a sua situação financeira, a partir de documentos da Assembleia Municipal. Valores aproximados aparecem com «cerca de».</p>
         <LastUpdated date={updated} className="mt-1" />
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-10 px-4 py-8">
-        <div className="flex justify-end"><CsvLink href="/dados/orcamento.csv" /></div>
+        {overview.length > 0 ? (
+          <section aria-labelledby="em-resumo" className="rounded-lg border border-line bg-record-soft p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <h2 id="em-resumo" className="font-serif text-2xl font-semibold">Em resumo</h2>
+              <CsvLink href="/dados/orcamento.csv" />
+            </div>
+            <ul className="mt-2 max-w-3xl list-disc space-y-1 pl-5">
+              {overview.map((line) => <li key={line}>{line}</li>)}
+            </ul>
+            <p className="mt-2 text-xs text-muted">Frases escritas por esta plataforma a partir dos valores oficiais que estão mais abaixo, cada um com a sua fonte.</p>
+          </section>
+        ) : <div className="flex justify-end"><CsvLink href="/dados/orcamento.csv" /></div>}
 
         <section aria-labelledby="resumo">
           <h2 id="resumo" className="font-serif text-2xl font-semibold">Orçamento de 2026</h2>
@@ -56,7 +123,6 @@ export default async function OrcamentoPage() {
                 <dd className="mt-1 font-serif text-2xl font-semibold tabular-nums">{amount(entry)}</dd>
                 {entry.note ? <dd className="mt-1 text-xs text-muted">{entry.note}</dd> : null}
                 <dd className="mt-2 flex flex-wrap items-center gap-2"><OfficialBadge /><SourceChips sources={entry.sources} /></dd>
-                <dd><LastUpdated date={entry.updatedAt} className="mt-2" /></dd>
               </div>
             ))}
           </dl>
@@ -87,7 +153,7 @@ export default async function OrcamentoPage() {
               <tbody>
                 {[...spending, ...revenue].map((entry) => (
                   <tr key={entry.id} className="border-t border-line align-top">
-                    <td className="px-3 py-2">{entry.label}{entry.note ? <span className="block text-xs text-muted">{entry.note}</span> : null}<LastUpdated date={entry.updatedAt} /></td>
+                    <td className="px-3 py-2">{entry.label}{entry.note ? <span className="block text-xs text-muted">{entry.note}</span> : null}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{amount(entry)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted">{entry.asOf ? formatDate(entry.asOf) : "—"}</td>
                     <td className="px-3 py-2"><SourceChips sources={entry.sources} /></td>
@@ -101,7 +167,7 @@ export default async function OrcamentoPage() {
         </section>
 
         <section aria-labelledby="financeira">
-          <h2 id="financeira" className="font-serif text-2xl font-semibold">Situação financeira do Município</h2>
+          <h2 id="financeira" className="font-serif text-2xl font-semibold">Dívida e dinheiro em caixa</h2>
           {asOf ? <p className="mt-1 text-sm text-muted">Dados a {formatDate(asOf)}, comunicados à Assembleia Municipal.</p> : null}
           <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {facts.map((fact) => (
@@ -110,20 +176,36 @@ export default async function OrcamentoPage() {
                 <dd className="mt-1 font-serif text-2xl font-semibold tabular-nums">{formatEur(fact.amountEur)}</dd>
                 {fact.note ? <dd className="mt-1 text-xs text-muted">{fact.note}</dd> : null}
                 <dd className="mt-2 flex flex-wrap items-center gap-2"><OfficialBadge /><SourceChips sources={fact.sources} /></dd>
-                <dd><LastUpdated date={fact.updatedAt} className="mt-2" /></dd>
               </div>
             ))}
           </dl>
           <div className="mt-4 max-w-2xl">
-            <Bars title="Disponibilidades ao longo do tempo" rows={history.map((entry) => ({ label: formatDate(entry.asOf!), value: Number(entry.amountEur) }))} />
+            <Bars title="Dinheiro em caixa (disponibilidades) ao longo do tempo" rows={history.map((entry) => ({ label: formatDate(entry.asOf!), value: Number(entry.amountEur) }))} />
           </div>
         </section>
 
+        <Disclosure summary="O que significam estes termos">
+          <dl className="grid max-w-3xl gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+            {GLOSSARY.map((item) => (
+              <div key={item.term} className="contents">
+                <dt className="font-semibold">{item.term}</dt>
+                <dd>{item.text}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-2 text-xs text-muted">Contexto geral escrito por esta plataforma, não retirado dos documentos.</p>
+        </Disclosure>
+
         <section aria-labelledby="documentos">
           <h2 id="documentos" className="font-serif text-2xl font-semibold">Documentos oficiais</h2>
-          <ul className="mt-2 grid gap-x-6 gap-y-1 text-sm md:grid-cols-2">
-            {docs.map((doc) => <li key={doc.id}><a href={doc.url} target="_blank" rel="noopener noreferrer" className="underline">{doc.title}</a></li>)}
-          </ul>
+          {[...docGroups.entries()].map(([group, items]) => (
+            <div key={group} className="mt-3">
+              <h3 className="font-semibold">{group} <span className="font-normal text-muted">({items.length})</span></h3>
+              <ul className="mt-1 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                {items.map((doc) => <li key={doc.id}><ExternalLink href={doc.url}>{doc.label}</ExternalLink></li>)}
+              </ul>
+            </div>
+          ))}
           <p className="mt-3 text-sm"><Link href="/fontes?tipo=ORCAMENTO" className="underline">Ver todos os documentos orçamentais</Link></p>
           <h3 className="mt-5 font-semibold">Portais oficiais</h3>
           <ul className="mt-1 space-y-1 text-sm">

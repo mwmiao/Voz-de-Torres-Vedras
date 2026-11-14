@@ -1,4 +1,5 @@
 import { Disclosure, ExternalLink } from "@/components/civic";
+import { IncidentCard } from "@/components/IncidentCard";
 import { IncidentExplorer } from "@/components/IncidentExplorer";
 import { CsvLink } from "@/components/labels";
 import { FREGUESIAS } from "@/lib/alerts";
@@ -27,8 +28,10 @@ import { toPublicIncident } from "@/lib/public-incident";
 
 const INCIDENT_SOURCES = SOURCE_CATALOG.filter((source) => source.group === "ocorrencias").map((source) => source.id);
 
+const OLDER_SHOWN = 10;
+
 const POLICY = [
-  `Só mostramos ocorrências dos últimos ${WINDOW_DAYS} dias, contados pela data da ocorrência. As mais antigas passam ao arquivo, disponível no CSV, e saem do mapa.`,
+  `Só mostramos ocorrências dos últimos ${WINDOW_DAYS} dias, contados pela data da ocorrência. As mais antigas saem do mapa e passam ao arquivo: as ${OLDER_SHOWN} mais recentes ficam numa lista fechada, por baixo do mapa, e todas estão no CSV.`,
   "Cada fonte tem um nível: 1, autoridade oficial; 2, órgão de comunicação social; 3, conta oficial numa rede social; 4, fonte comunitária ou não oficial, como grupos locais, páginas de residentes ou canais públicos.",
   "Uma fonte oficial torna a ocorrência «Confirmado». A imprensa torna-a «Reportado». Uma ocorrência que surge numa rede social ou página comunitária só passa a «Reportado» com duas redações independentes, e só passa a «Confirmado» com uma fonte oficial.",
   "Repetição não é confirmação: várias contas a partilhar a mesma publicação contam como uma só fonte, e as notícias da agência Lusa republicadas por várias redações contam como uma.",
@@ -46,9 +49,11 @@ export async function IncidentSection({ params }: { params: SearchParams }) {
   // Margem de um dia: o corte exato faz-se pelo dia civil de Lisboa.
   const since = windowStart(now);
   const firstDay = windowStartDay(now);
-  const [rows, olderThanWindow, archivedRecent, held, lastRun] = await Promise.all([
+  const olderWhere = { archivedAt: null, heldForReview: false, incidentStart: { lt: new Date(`${firstDay}T00:00:00Z`) } };
+  const [rows, olderThanWindow, older, archivedRecent, held, lastRun] = await Promise.all([
     db.incident.findMany({ where: publicIncidentWhere(now), include: { references: true }, orderBy: [{ incidentStart: "desc" }, { publicationDate: "desc" }] }),
-    db.incident.count({ where: { archivedAt: null, heldForReview: false, incidentStart: { lt: new Date(`${firstDay}T00:00:00Z`) } } }),
+    db.incident.count({ where: olderWhere }),
+    db.incident.findMany({ where: olderWhere, include: { references: true }, orderBy: { incidentStart: "desc" }, take: OLDER_SHOWN }),
     db.incident.count({ where: { archivedAt: { not: null }, incidentStart: { gte: since } } }),
     db.incident.count({ where: { archivedAt: null, heldForReview: true, incidentStart: { gte: since } } }),
     db.dataUpdateLog.findFirst({ where: { sourceId: { in: INCIDENT_SOURCES }, status: { not: "ERRO" } }, orderBy: { retrievalDate: "desc" } }),
@@ -82,12 +87,23 @@ export async function IncidentSection({ params }: { params: SearchParams }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1 text-xs text-muted">
           {lastRun ? <p>Fontes consultadas pela última vez a {formatDateTime(lastRun.retrievalDate)}.</p> : <p>As fontes de ocorrências ainda não foram consultadas.</p>}
-          {olderThanWindow > 0 ? <p>{olderThanWindow === 1 ? "1 ocorrência com mais de 14 dias saiu do mapa e está no arquivo." : `${olderThanWindow} ocorrências com mais de 14 dias saíram do mapa e estão no arquivo.`}</p> : null}
           {archivedRecent > 0 ? <p>{archivedRecent === 1 ? "1 ocorrência recente foi arquivada por não se ter confirmado, ter sido apagada ou contrariada." : `${archivedRecent} ocorrências recentes foram arquivadas por não se terem confirmado, terem sido apagadas ou contrariadas.`}</p> : null}
           {held > 0 ? <p>{held === 1 ? "1 registo aguarda revisão e não é mostrado." : `${held} registos aguardam revisão e não são mostrados.`}</p> : null}
         </div>
         <CsvLink href="/dados/ocorrencias.csv" label="Descarregar CSV, com arquivo" />
       </div>
+
+      {older.length > 0 ? (
+        <Disclosure summary={`Ocorrências com mais de ${WINDOW_DAYS} dias (${olderThanWindow}): fora do mapa`}>
+          <p className="max-w-3xl text-sm text-muted">
+            Já não aparecem no mapa. O estado de verificação é o da última consulta às fontes.
+            {olderThanWindow > older.length ? ` Mostramos as ${older.length} mais recentes: as restantes estão no CSV.` : ""}
+          </p>
+          <ol className="mt-3 grid gap-3 md:grid-cols-2">
+            {older.map((row) => <li key={row.id}><IncidentCard incident={toPublicIncident(row)} highlighted={false} /></li>)}
+          </ol>
+        </Disclosure>
+      ) : null}
 
       <Disclosure summary="Como verificamos: estados, níveis das fontes, 14 dias e localização aproximada">
         <dl className="grid max-w-3xl gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">

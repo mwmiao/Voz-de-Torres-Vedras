@@ -1,5 +1,5 @@
 /** Normalização do conjunto de dados do Portal BASE publicado pelo IMPIC em dados.gov.pt. */
-import { awardingEntityName, MUNICIPAL_NIFS } from "../entities";
+import { AWARDING_ENTITIES } from "../entities";
 
 export const BASE_DATASET_URL =
   "https://dados.gov.pt/pt/datasets/contratos-publicos-portal-base-impic-contratos-de-2012-a-2026/";
@@ -87,7 +87,8 @@ export function baseContractUrl(id: string): string {
 
 export function normalizeBaseRecord(record: BaseRecord): NormalizedContract | null {
   const awarding = splitEntity(record.adjudicante?.[0] ?? "");
-  if (!MUNICIPAL_NIFS.includes(awarding.nif)) return null;
+  const entity = AWARDING_ENTITIES.find((item) => item.nif === awarding.nif);
+  if (!entity) return null;
 
   const suppliers = (record.adjudicatarios ?? []).map(splitEntity);
   const hasPerson = suppliers.some((supplier) => isPersonSupplier(supplier.nif, supplier.name));
@@ -101,8 +102,8 @@ export function normalizeBaseRecord(record: BaseRecord): NormalizedContract | nu
   return {
     baseId,
     title: decodeEntities(record.objectoContrato ?? "Sem designação").trim(),
-    awardingBody: awardingEntityName(awarding.nif),
-    awardingNif: awarding.nif,
+    awardingBody: entity.name,
+    awardingNif: entity.nif,
     supplierName: hasPerson
       ? PERSON_SUPPLIER_LABEL
       : suppliers.map((supplier) => supplier.name).join("; ") || "Não indicado",

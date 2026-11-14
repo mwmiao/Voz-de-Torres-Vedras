@@ -5,7 +5,9 @@ import { BudgetFigure } from "@/components/BudgetFigure";
 import { CsvLink, KindLabel, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { Disclosure, ExternalLink, ScrollTable } from "@/components/civic";
 import { SourceChips } from "@/components/Receipts";
-import { budgetOverview, budgetYear, cashHistory, groupBudgetDocs, latestFinancialFacts } from "@/lib/budget-overview";
+import { budgetOverview } from "@/lib/budget-copy";
+import { groupBudgetDocs } from "@/lib/budget-docs";
+import { amountOf, budgetYear, cashHistory, latestFinancialFacts } from "@/lib/budget-facts";
 import { db } from "@/lib/db";
 import { formatDate, formatEur } from "@/lib/format";
 
@@ -45,7 +47,7 @@ export default async function OrcamentoPage() {
 
   const year = budgetYear(summary);
   const summaryTitle = year ? `Orçamento de ${year}` : "Orçamento";
-  const overview = budgetOverview(summary, facts, asOf);
+  const overview = budgetOverview({ summary, year, facts, asOf });
   const docGroups = groupBudgetDocs(docs);
 
   const amount = (entry: { approximate: boolean; amountEur: { toString(): string } }) =>
@@ -90,8 +92,8 @@ export default async function OrcamentoPage() {
             Valores que constam de documentos da Assembleia Municipal. Não são a totalidade do orçamento: os mapas completos de receita e despesa estão nos PDF da Câmara, ligados abaixo.
           </p>
           <div className="mt-3 grid gap-4 md:grid-cols-2">
-            <Bars title="Despesa" rows={spending.map((entry) => ({ label: entry.label, value: Number(entry.amountEur), detail: entry.approximate ? "Valor aproximado" : undefined }))} />
-            <Bars title="Receita" rows={revenue.map((entry) => ({ label: entry.label, value: Number(entry.amountEur) }))} />
+            <Bars title="Despesa" rows={spending.map((entry) => ({ label: entry.label, value: amountOf(entry), detail: entry.approximate ? "Valor aproximado" : undefined }))} />
+            <Bars title="Receita" rows={revenue.map((entry) => ({ label: entry.label, value: amountOf(entry) }))} />
           </div>
           <div className="mt-4">
           <Disclosure summary="Ver cada valor e a sua fonte">
@@ -129,7 +131,7 @@ export default async function OrcamentoPage() {
             {facts.map((fact) => <BudgetFigure key={fact.id} label={fact.label} value={formatEur(fact.amountEur)} note={fact.note} sources={fact.sources} updatedAt={fact.updatedAt} />)}
           </dl>
           <div className="mt-4 max-w-2xl">
-            <Bars title="Dinheiro em caixa (disponibilidades) ao longo do tempo" rows={history.map((entry) => ({ label: formatDate(entry.asOf), value: Number(entry.amountEur) }))} />
+            <Bars title="Dinheiro em caixa (disponibilidades) ao longo do tempo" rows={history.map((entry) => ({ label: formatDate(entry.asOf), value: amountOf(entry) }))} />
           </div>
         </section>
 

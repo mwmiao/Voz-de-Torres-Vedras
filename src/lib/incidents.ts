@@ -251,6 +251,9 @@ export function filterIncidents<T extends Filterable>(incidents: T[], filters: P
  */
 export const publicIncidentWhere = (now: Date): Prisma.IncidentWhereInput => ({ archivedAt: null, heldForReview: false, incidentStart: { gte: windowStart(now) } });
 
+/** Ocorrências que já saíram da janela de 14 dias: fora do mapa, mas ainda não arquivadas nem retidas. */
+export const olderIncidentWhere = (now: Date): Prisma.IncidentWhereInput => ({ archivedAt: null, heldForReview: false, incidentStart: { lt: new Date(`${windowStartDay(now)}T00:00:00Z`) } });
+
 /** Porque é que uma ocorrência não aparece no mapa, ou nulo se aparece. */
 export function visibilityProblem(incident: { archivedAt: Date | null; archiveReason: string | null; heldForReview: boolean; reviewReasons: string; incidentStart: Date }, at: Date): string | null {
   if (incident.archivedAt) return `arquivada: ${incident.archiveReason ?? "sem motivo"}`;

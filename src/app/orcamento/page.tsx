@@ -4,21 +4,14 @@ import { Bars } from "@/components/Bars";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Disclosure, ExternalLink, ScrollTable } from "@/components/civic";
 import { OfficialBadge, SourceChips } from "@/components/Receipts";
+import { budgetOverview, groupBudgetDocs, latestFinancialFacts } from "@/lib/budget-overview";
 import { db } from "@/lib/db";
 import { formatDate, formatEur } from "@/lib/format";
-import { searchKey } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Orçamento", description: "Orçamento, despesa e situação financeira do Município de Torres Vedras, com fontes oficiais." };
 
 const HISTORY_LABEL = "Total de disponibilidades";
-
-/** Ordem de leitura da situação financeira: primeiro o total e o limite, depois as partes. */
-const FINANCIAL_ORDER = ["divida total da autarquia", "limite da divida", "medio e longo prazo", "curto prazo", "disponibilidades"];
-const rank = (label: string) => {
-  const index = FINANCIAL_ORDER.findIndex((key) => searchKey(label).includes(key));
-  return index === -1 ? FINANCIAL_ORDER.length : index;
-};
 
 /** Contexto geral escrito por esta plataforma, não retirado dos documentos. */
 const GLOSSARY = [
@@ -30,9 +23,6 @@ const GLOSSARY = [
   { term: "Dívida de médio e longo prazo", text: "Empréstimos e locações a pagar em mais de um ano." },
   { term: "Limite da dívida total", text: "Valor máximo de dívida que a lei permite ao Município, calculado a partir da receita dos últimos anos." },
 ];
-
-const million = (value: number) => `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(value / 1_000_000)} milhões de euros`;
-const percent = (value: number) => `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(value * 100)}%`;
 
 const PORTALS = [
   { label: "Documentos de gestão da Câmara Municipal", url: "https://www.cm-tvedras.pt/documentos/gestao/" },
@@ -50,36 +40,14 @@ export default async function OrcamentoPage() {
   const spending = entries.filter((entry) => entry.kind === "DESPESA");
   const revenue = entries.filter((entry) => entry.kind === "RECEITA");
   const financial = entries.filter((entry) => entry.kind === "SITUACAO_FINANCEIRA");
-  const asOf = financial.map((entry) => entry.asOf).filter((date) => date !== null).sort((a, b) => b.getTime() - a.getTime())[0];
-  const facts = financial.filter((entry) => entry.asOf?.getTime() === asOf?.getTime()).sort((a, b) => rank(a.label) - rank(b.label));
+  const { asOf, facts } = latestFinancialFacts(financial);
   const history = financial
     .filter((entry) => entry.label === HISTORY_LABEL)
     .sort((a, b) => a.asOf!.getTime() - b.asOf!.getTime());
   const updated = entries.map((entry) => entry.updatedAt).sort((a, b) => b.getTime() - a.getTime())[0];
 
-  // Resumo: só frases cujos valores existem nos registos. A percentagem é uma conta simples entre dois valores oficiais.
-  const find = (list: typeof entries, key: string) => list.find((entry) => searchKey(entry.label).includes(key));
-  const debt = find(facts, "divida total da autarquia");
-  const limit = find(facts, "limite da divida");
-  const cash = find(facts, "total de disponibilidades");
-  const budgetTotal = summary.reduce((sum, entry) => sum + Number(entry.amountEur), 0);
-  const overview = [
-    summary.length > 0
-      ? `O orçamento de 2026 soma cerca de ${million(budgetTotal)}: ${summary.map((entry) => `${entry.label.replace(/^Orçamento d[aeo]s? /, "")}, ${million(Number(entry.amountEur))}`).join("; ")}.`
-      : null,
-    debt && limit && Number(limit.amountEur) > 0
-      ? `A dívida total comunicada é de ${million(Number(debt.amountEur))}, o que corresponde a ${percent(Number(debt.amountEur) / Number(limit.amountEur))} do limite da dívida total (${million(Number(limit.amountEur))}).${debt.note ? " Este valor está incompleto, segundo a própria fonte: ver a nota abaixo." : ""}`
-      : null,
-    cash && asOf ? `A ${formatDate(asOf)}, o Município tinha ${million(Number(cash.amountEur))} em caixa e contas bancárias.` : null,
-  ].filter((line): line is string => Boolean(line));
-
-  // Documentos agrupados pelo conjunto a que pertencem: «2025, Prestação de contas final: Balanço».
-  const docGroups = new Map<string, { id: string; url: string; label: string }[]>();
-  for (const doc of docs) {
-    const cut = doc.title.indexOf(": ");
-    const group = cut > 0 ? doc.title.slice(0, cut) : "Outros documentos";
-    docGroups.set(group, [...(docGroups.get(group) ?? []), { id: doc.id, url: doc.url, label: cut > 0 ? doc.title.slice(cut + 2) : doc.title }]);
-  }
+  const overview = budgetOverview(summary, facts, asOf);
+  const docGroups = groupBudgetDocs(docs);
 
   const amount = (entry: { approximate: boolean; amountEur: { toString(): string } }) =>
     `${entry.approximate ? "Cerca de " : ""}${formatEur(entry.amountEur)}`;
@@ -198,7 +166,7 @@ export default async function OrcamentoPage() {
 
         <section aria-labelledby="documentos">
           <h2 id="documentos" className="font-serif text-2xl font-semibold">Documentos oficiais</h2>
-          {[...docGroups.entries()].map(([group, items]) => (
+          {docGroups.map(({ group, items }) => (
             <div key={group} className="mt-3">
               <h3 className="font-semibold">{group} <span className="font-normal text-muted">({items.length})</span></h3>
               <ul className="mt-1 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">

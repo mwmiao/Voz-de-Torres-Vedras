@@ -13,6 +13,7 @@ import {
   clampRange,
   INCIDENT_CATEGORIES,
   METHOD_INTRO,
+  olderIncidentWhere,
   publicIncidentWhere,
   REVIEW_DEFAULTS,
   SOURCE_TIER_LABEL,
@@ -22,7 +23,6 @@ import {
   visibilityProblem,
   WINDOW_DAYS,
   windowStart,
-  windowStartDay,
 } from "@/lib/incidents";
 import { toPublicIncident } from "@/lib/public-incident";
 
@@ -48,8 +48,7 @@ export async function IncidentSection({ params }: { params: SearchParams }) {
   const range = clampRange(now, params.de, params.ate);
   // Margem de um dia: o corte exato faz-se pelo dia civil de Lisboa.
   const since = windowStart(now);
-  const firstDay = windowStartDay(now);
-  const olderWhere = { archivedAt: null, heldForReview: false, incidentStart: { lt: new Date(`${firstDay}T00:00:00Z`) } };
+  const olderWhere = olderIncidentWhere(now);
   const [rows, olderThanWindow, older, archivedRecent, held, lastRun] = await Promise.all([
     db.incident.findMany({ where: publicIncidentWhere(now), include: { references: true }, orderBy: [{ incidentStart: "desc" }, { publicationDate: "desc" }] }),
     db.incident.count({ where: olderWhere }),
@@ -77,12 +76,20 @@ export async function IncidentSection({ params }: { params: SearchParams }) {
         <p className="mt-1 max-w-3xl">{METHOD_INTRO}</p>
       </div>
 
-      <IncidentExplorer
-        incidents={incidents}
-        freguesias={FREGUESIAS.map(({ slug, name }) => ({ slug, name }))}
-        initial={{ area, tipo, estado, fonte, de: range.from, ate: range.to }}
-        bounds={{ min: range.min, max: range.max }}
-      />
+      {incidents.length === 0 ? (
+        // Sem nenhuma ocorrência nas duas semanas, o mapa e os filtros não têm nada para mostrar.
+        <div className="rounded-lg border border-line bg-surface p-4" role="status">
+          <p className="font-semibold">Sem ocorrências publicadas nas últimas duas semanas, em todo o concelho.</p>
+          <p className="mt-1 text-sm text-muted">O mapa e os filtros voltam a aparecer quando houver ocorrências neste período.</p>
+        </div>
+      ) : (
+        <IncidentExplorer
+          incidents={incidents}
+          freguesias={FREGUESIAS.map(({ slug, name }) => ({ slug, name }))}
+          initial={{ area, tipo, estado, fonte, de: range.from, ate: range.to }}
+          bounds={{ min: range.min, max: range.max }}
+        />
+      )}
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1 text-xs text-muted">

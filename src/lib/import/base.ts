@@ -1,15 +1,8 @@
 /** Normalização do conjunto de dados do Portal BASE publicado pelo IMPIC em dados.gov.pt. */
+import { awardingEntityName, MUNICIPAL_NIFS } from "../entities";
 
 export const BASE_DATASET_URL =
   "https://dados.gov.pt/pt/datasets/contratos-publicos-portal-base-impic-contratos-de-2012-a-2026/";
-
-/** Entidades adjudicantes acompanhadas: o Município e os SMAS. */
-export const AWARDING_ENTITIES = [
-  { nif: "502173653", name: "Município de Torres Vedras" },
-  { nif: "680015973", name: "SMAS de Torres Vedras" },
-] as const;
-
-export const MUNICIPAL_NIFS: string[] = AWARDING_ENTITIES.map((entity) => entity.nif);
 
 export type BaseRecord = {
   idcontrato: string | number;
@@ -108,7 +101,7 @@ export function normalizeBaseRecord(record: BaseRecord): NormalizedContract | nu
   return {
     baseId,
     title: decodeEntities(record.objectoContrato ?? "Sem designação").trim(),
-    awardingBody: AWARDING_ENTITIES.find((entity) => entity.nif === awarding.nif)?.name ?? AWARDING_ENTITIES[0].name,
+    awardingBody: awardingEntityName(awarding.nif),
     awardingNif: awarding.nif,
     supplierName: hasPerson
       ? PERSON_SUPPLIER_LABEL

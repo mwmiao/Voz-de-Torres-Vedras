@@ -1,4 +1,5 @@
-import { baseContractUrl, MUNICIPAL_NIFS, parseDate } from "@/lib/import/base";
+import { MUNICIPAL_NIFS } from "@/lib/entities";
+import { baseContractUrl, parseDate } from "@/lib/import/base";
 import { cleanText } from "../normalizers";
 import type { DocumentRecord, ModificationRecord } from "../types";
 

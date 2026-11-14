@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { extractText, getDocumentProxy } from "unpdf";
-import { MUNICIPAL_NIFS, normalizeBaseRecord, type BaseRecord } from "@/lib/import/base";
+import { MUNICIPAL_NIFS } from "@/lib/entities";
+import { normalizeBaseRecord, type BaseRecord } from "@/lib/import/base";
 import { filterJsonArray, findYearResource, unzipFirst } from "../fetchers/open-data";
 import { sha256 } from "../fetchers/http";
 import { wpList } from "../fetchers/wordpress";

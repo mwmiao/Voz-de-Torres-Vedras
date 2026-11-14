@@ -18,6 +18,16 @@ const findByKey = <T extends Entry>(list: T[], key: string) => list.find((entry)
 const million = (value: number) => `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(value / 1_000_000)} milhões de euros`;
 const percent = (value: number) => `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(value * 100)}%`;
 
+/** Ano do orçamento: o dos registos de resumo. */
+export const budgetYear = (summary: { year: number }[]): number | undefined => (summary.length > 0 ? Math.max(...summary.map((entry) => entry.year)) : undefined);
+
+/** Evolução do dinheiro em caixa, da data mais antiga para a mais recente. */
+export function cashHistory<T extends Entry>(financial: T[]): (T & { asOf: Date })[] {
+  return financial
+    .filter((entry): entry is T & { asOf: Date } => entry.asOf !== null && searchKey(entry.label).includes(CASH_KEY))
+    .sort((a, b) => a.asOf.getTime() - b.asOf.getTime());
+}
+
 /** Situação financeira na data mais recente, ordenada para leitura, e essa data. */
 export function latestFinancialFacts<T extends Entry>(financial: T[]): { asOf: Date | undefined; facts: T[] } {
   const asOf = financial.map((entry) => entry.asOf).filter((date) => date !== null).sort((a, b) => b.getTime() - a.getTime())[0];
@@ -26,14 +36,14 @@ export function latestFinancialFacts<T extends Entry>(financial: T[]): { asOf: D
 }
 
 /** Frases do resumo: só aparecem as que têm os valores nos registos. A percentagem é uma conta simples entre dois valores oficiais. */
-export function budgetOverview(summary: Entry[], facts: Entry[], asOf: Date | undefined): string[] {
+export function budgetOverview(summary: (Entry & { year: number })[], facts: Entry[], asOf: Date | undefined): string[] {
   const debt = findByKey(facts, DEBT_KEY);
   const limit = findByKey(facts, LIMIT_KEY);
   const cash = findByKey(facts, CASH_KEY);
   const budgetTotal = summary.reduce((sum, entry) => sum + Number(entry.amountEur), 0);
   return [
     summary.length > 0
-      ? `O orçamento de 2026 soma cerca de ${million(budgetTotal)}: ${summary.map((entry) => `${entry.label.replace(/^Orçamento d[aeo]s? /, "")}, ${million(Number(entry.amountEur))}`).join("; ")}.`
+      ? `O orçamento de ${budgetYear(summary)} soma cerca de ${million(budgetTotal)}: ${summary.map((entry) => `${entry.label.replace(/^Orçamento d[aeo]s? /, "")}, ${million(Number(entry.amountEur))}`).join("; ")}.`
       : null,
     debt && limit && Number(limit.amountEur) > 0
       ? `A dívida total comunicada é de ${million(Number(debt.amountEur))}, o que corresponde a ${percent(Number(debt.amountEur) / Number(limit.amountEur))} do limite da dívida total (${million(Number(limit.amountEur))}).${debt.note ? " Este valor está incompleto, segundo a própria fonte: ver a nota abaixo." : ""}`

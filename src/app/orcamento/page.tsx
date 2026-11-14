@@ -1,17 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bars } from "@/components/Bars";
+import { BudgetFigure } from "@/components/BudgetFigure";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Disclosure, ExternalLink, ScrollTable } from "@/components/civic";
-import { OfficialBadge, SourceChips } from "@/components/Receipts";
-import { budgetOverview, groupBudgetDocs, latestFinancialFacts } from "@/lib/budget-overview";
+import { SourceChips } from "@/components/Receipts";
+import { budgetOverview, budgetYear, cashHistory, groupBudgetDocs, latestFinancialFacts } from "@/lib/budget-overview";
 import { db } from "@/lib/db";
 import { formatDate, formatEur } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Orçamento", description: "Orçamento, despesa e situação financeira do Município de Torres Vedras, com fontes oficiais." };
-
-const HISTORY_LABEL = "Total de disponibilidades";
 
 /** Contexto geral escrito por esta plataforma, não retirado dos documentos. */
 const GLOSSARY = [
@@ -41,11 +40,11 @@ export default async function OrcamentoPage() {
   const revenue = entries.filter((entry) => entry.kind === "RECEITA");
   const financial = entries.filter((entry) => entry.kind === "SITUACAO_FINANCEIRA");
   const { asOf, facts } = latestFinancialFacts(financial);
-  const history = financial
-    .filter((entry) => entry.label === HISTORY_LABEL)
-    .sort((a, b) => a.asOf!.getTime() - b.asOf!.getTime());
+  const history = cashHistory(financial);
   const updated = entries.map((entry) => entry.updatedAt).sort((a, b) => b.getTime() - a.getTime())[0];
 
+  const year = budgetYear(summary);
+  const summaryTitle = year ? `Orçamento de ${year}` : "Orçamento";
   const overview = budgetOverview(summary, facts, asOf);
   const docGroups = groupBudgetDocs(docs);
 
@@ -59,7 +58,7 @@ export default async function OrcamentoPage() {
         kicker={<KindLabel kind="REGISTO_OFICIAL" />}
         sections={[
           { href: "#em-resumo", label: "Em resumo" },
-          { href: "#resumo", label: "Orçamento de 2026" },
+          { href: "#resumo", label: summaryTitle },
           { href: "#despesa", label: "Despesa e receita" },
           { href: "#financeira", label: "Dívida e dinheiro em caixa" },
           { href: "#documentos", label: "Documentos" },
@@ -83,17 +82,9 @@ export default async function OrcamentoPage() {
         ) : <div className="flex justify-end"><CsvLink href="/dados/orcamento.csv" /></div>}
 
         <section aria-labelledby="resumo">
-          <h2 id="resumo" className="font-serif text-2xl font-semibold">Orçamento de 2026</h2>
+          <h2 id="resumo" className="font-serif text-2xl font-semibold">{summaryTitle}</h2>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-            {summary.map((entry) => (
-              <div key={entry.id} className="rounded-lg border border-line bg-surface p-4">
-                <dt className="text-sm text-muted">{entry.label}</dt>
-                <dd className="mt-1 font-serif text-2xl font-semibold tabular-nums">{amount(entry)}</dd>
-                {entry.note ? <dd className="mt-1 text-xs text-muted">{entry.note}</dd> : null}
-                <dd className="mt-2 flex flex-wrap items-center gap-2"><OfficialBadge /><SourceChips sources={entry.sources} /></dd>
-                <dd><LastUpdated date={entry.updatedAt} className="mt-2" /></dd>
-              </div>
-            ))}
+            {summary.map((entry) => <BudgetFigure key={entry.id} label={entry.label} value={amount(entry)} note={entry.note} sources={entry.sources} updatedAt={entry.updatedAt} />)}
           </dl>
         </section>
 
@@ -139,18 +130,10 @@ export default async function OrcamentoPage() {
           <h2 id="financeira" className="font-serif text-2xl font-semibold">Dívida e dinheiro em caixa</h2>
           {asOf ? <p className="mt-1 text-sm text-muted">Dados a {formatDate(asOf)}, comunicados à Assembleia Municipal.</p> : null}
           <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {facts.map((fact) => (
-              <div key={fact.id} className="rounded-lg border border-line bg-surface p-4">
-                <dt className="text-sm text-muted">{fact.label}</dt>
-                <dd className="mt-1 font-serif text-2xl font-semibold tabular-nums">{formatEur(fact.amountEur)}</dd>
-                {fact.note ? <dd className="mt-1 text-xs text-muted">{fact.note}</dd> : null}
-                <dd className="mt-2 flex flex-wrap items-center gap-2"><OfficialBadge /><SourceChips sources={fact.sources} /></dd>
-                <dd><LastUpdated date={fact.updatedAt} className="mt-2" /></dd>
-              </div>
-            ))}
+            {facts.map((fact) => <BudgetFigure key={fact.id} label={fact.label} value={formatEur(fact.amountEur)} note={fact.note} sources={fact.sources} updatedAt={fact.updatedAt} />)}
           </dl>
           <div className="mt-4 max-w-2xl">
-            <Bars title="Dinheiro em caixa (disponibilidades) ao longo do tempo" rows={history.map((entry) => ({ label: formatDate(entry.asOf!), value: Number(entry.amountEur) }))} />
+            <Bars title="Dinheiro em caixa (disponibilidades) ao longo do tempo" rows={history.map((entry) => ({ label: formatDate(entry.asOf), value: Number(entry.amountEur) }))} />
           </div>
         </section>
 

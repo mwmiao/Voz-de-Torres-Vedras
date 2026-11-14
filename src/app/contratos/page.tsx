@@ -6,9 +6,9 @@ import { EmptyState, FilterPanel, MetricCard, Pagination, SectionHead } from "@/
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
+import { AWARDING_ENTITIES } from "@/lib/entities";
 import { contractOrder, contractWhere, queryString, type SearchParams } from "@/lib/filters";
 import { formatEur, formatNumber } from "@/lib/format";
-import { AWARDING_ENTITIES } from "@/lib/import/base";
 import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";

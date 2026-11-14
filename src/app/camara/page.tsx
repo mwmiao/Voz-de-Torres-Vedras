@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { EmptyState, FilterPanel } from "@/components/civic";
-import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
+import { KindLabel, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import type { SearchParams } from "@/lib/filters";
@@ -32,16 +32,14 @@ export default async function CamaraPage({ searchParams }: { searchParams: Promi
   ].filter((group) => group.people.length > 0);
   const found = officials.length + committees.length;
 
+  const { nav, id: anchor } = pageSections({ executivo: `Executivo Municipal (${executive.length})`, assembleia: `Assembleia Municipal (${assembly.length})`, comissoes: `Comissões (${committees.length})` });
+
   return (
     <>
       <PageHead
         title="Eleitos"
         kicker={<KindLabel kind="REGISTO_OFICIAL" />}
-        sections={[
-          { href: "#executivo", label: `Executivo Municipal (${executive.length})` },
-          { href: "#assembleia", label: `Assembleia Municipal (${assembly.length})` },
-          { href: "#comissoes", label: `Comissões (${committees.length})` },
-        ]}
+        sections={nav}
       >
         <p>Quem compõe a Câmara e a Assembleia Municipal. Diretório neutro, apenas com informação pública e oficial: não inclui classificações, comentários nem apreciações sobre pessoas.</p>
         <LastUpdated date={allOfficials[0]?.updatedAt} className="mt-1" />
@@ -58,8 +56,8 @@ export default async function CamaraPage({ searchParams }: { searchParams: Promi
         {q && found === 0 ? <EmptyState title="Nenhum eleito ou comissão corresponde à pesquisa."><Link href="/camara" className="underline">Limpar pesquisa</Link></EmptyState> : null}
 
         {executive.length > 0 ? (
-        <section aria-labelledby="executivo">
-          <h2 id="executivo" className="font-serif text-2xl font-semibold">Executivo Municipal</h2>
+        <section aria-labelledby={anchor.executivo}>
+          <h2 id={anchor.executivo} className="font-serif text-2xl font-semibold">Executivo Municipal</h2>
           <ul className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {executive.map((official) => (
               <li key={official.id} className="rounded-lg border border-line bg-surface p-4">
@@ -76,8 +74,8 @@ export default async function CamaraPage({ searchParams }: { searchParams: Promi
         ) : null}
 
         {groups.length > 0 ? (
-        <section aria-labelledby="assembleia">
-          <h2 id="assembleia" className="font-serif text-2xl font-semibold">Assembleia Municipal</h2>
+        <section aria-labelledby={anchor.assembleia}>
+          <h2 id={anchor.assembleia} className="font-serif text-2xl font-semibold">Assembleia Municipal</h2>
           {groups.map((group) => (
             <div key={group.title} className="mt-4">
               <h3 className="font-semibold">{group.title}</h3>
@@ -97,8 +95,8 @@ export default async function CamaraPage({ searchParams }: { searchParams: Promi
         ) : null}
 
         {committees.length > 0 ? (
-        <section aria-labelledby="comissoes">
-          <h2 id="comissoes" className="font-serif text-2xl font-semibold">Comissões da Assembleia Municipal</h2>
+        <section aria-labelledby={anchor.comissoes}>
+          <h2 id={anchor.comissoes} className="font-serif text-2xl font-semibold">Comissões da Assembleia Municipal</h2>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {committees.map((committee) => (
               <article key={committee.id} className="rounded-lg border border-line bg-surface p-4">

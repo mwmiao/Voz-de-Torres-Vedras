@@ -2,7 +2,7 @@ import type { Metric, Outcome } from "@prisma/client";
 import type { Metadata } from "next";
 import { Bars } from "@/components/Bars";
 import { Disclosure, EmptyState, ExternalLink, MetricCard, ScrollTable, SectionHead } from "@/components/civic";
-import { CsvLink, LastUpdated, PageHead } from "@/components/labels";
+import { CsvLink, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { db } from "@/lib/db";
 import { formatEur, formatNumber, OUTCOME_LABEL } from "@/lib/format";
 import { latestMetric } from "@/lib/metrics";
@@ -58,17 +58,13 @@ export default async function MetricasPage() {
   const contractSource = { href: OFFICIAL_CONTRACTS, label: "Portal BASE (IMPIC)" };
   const meetingSource = { href: "https://www.am-tvedras.pt/sessoes/editais/", label: "editais e atas" };
 
+  const { nav, id: anchor } = pageSections({ contratos: "Contratos públicos", reunioes: "Reuniões e decisões", orcamento: "Orçamento", documentos: "Documentos publicados", atualizacao: "Atualização dos dados" });
+
   return (
     <>
       <PageHead
         title="Métricas"
-        sections={[
-          { href: "#contratos", label: "Contratos públicos" },
-          { href: "#reunioes", label: "Reuniões e decisões" },
-          { href: "#orcamento", label: "Orçamento" },
-          { href: "#documentos", label: "Documentos publicados" },
-          { href: "#atualizacao", label: "Atualização dos dados" },
-        ]}
+        sections={nav}
       >
         <p>Indicadores simples sobre a atividade municipal. Descrevem valores e variações, sem os avaliar. O ano em curso está incompleto, por isso as comparações usam o último ano fechado.</p>
         <LastUpdated date={updated} className="mt-1" />
@@ -76,8 +72,8 @@ export default async function MetricasPage() {
       <div className="mx-auto max-w-6xl space-y-10 px-4 py-8">
         <div className="flex justify-end"><CsvLink href="/dados/metricas.csv" label="Descarregar métricas em CSV" /></div>
 
-        <section aria-labelledby="contratos">
-          <SectionHead id="contratos" title="Contratos públicos">Contratos do Município e dos SMAS, pelo ano de celebração.</SectionHead>
+        <section aria-labelledby={anchor.contratos}>
+          <SectionHead id={anchor.contratos} title="Contratos públicos">Contratos do Município e dos SMAS, pelo ano de celebração.</SectionHead>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <MetricCard label={`Contratos em ${complete}`} value={formatNumber(latestMetric(contractsNumber, complete) ?? 0)} trend={compareValues(latestMetric(contractsNumber, complete), latestMetric(contractsNumber, previous), previous)} source={contractSource} />
             <MetricCard label={`Valor total em ${complete}`} value={formatEur(latestMetric(contractsValue, complete) ?? 0)} trend={compareValues(latestMetric(contractsValue, complete), latestMetric(contractsValue, previous), previous)} source={contractSource} />
@@ -91,8 +87,8 @@ export default async function MetricasPage() {
           <p className="mt-2 text-sm text-muted">Somas descritivas. A presença de um fornecedor nesta lista não implica qualquer juízo. Pessoas singulares não são apresentadas.</p>
         </section>
 
-        <section aria-labelledby="reunioes">
-          <SectionHead id="reunioes" title="Reuniões e decisões">Inclui apenas o que foi transcrito de documentos oficiais. As decisões do Executivo Municipal estão incompletas, porque constam de PDF de acesso restrito a robôs.</SectionHead>
+        <section aria-labelledby={anchor.reunioes}>
+          <SectionHead id={anchor.reunioes} title="Reuniões e decisões">Inclui apenas o que foi transcrito de documentos oficiais. As decisões do Executivo Municipal estão incompletas, porque constam de PDF de acesso restrito a robôs.</SectionHead>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <MetricCard label={`Reuniões em ${complete}`} value={formatNumber(latestMetric(meetings, complete) ?? 0)} trend={compareValues(latestMetric(meetings, complete), latestMetric(meetings, previous), previous)} source={meetingSource} />
           </dl>
@@ -120,14 +116,14 @@ export default async function MetricasPage() {
           </div>
         </section>
 
-        <section aria-labelledby="orcamento">
-          <SectionHead id="orcamento" title="Orçamento">Valores identificados em documentos da Assembleia Municipal. Não são o orçamento completo.</SectionHead>
+        <section aria-labelledby={anchor.orcamento}>
+          <SectionHead id={anchor.orcamento} title="Orçamento">Valores identificados em documentos da Assembleia Municipal. Não são o orçamento completo.</SectionHead>
           {budget.length > 0 ? <div className="mt-3 max-w-3xl"><Bars title={`Valores orçamentais identificados, ${year}`} rows={budget.map((row) => ({ label: row.dimension, value: row.value }))} /></div> : <div className="mt-3"><EmptyState title="Sem dados comparáveis." /></div>}
           <p className="mt-2 text-sm"><ExternalLink href="/orcamento">Ver orçamento e fontes de cada valor</ExternalLink></p>
         </section>
 
-        <section aria-labelledby="documentos">
-          <SectionHead id="documentos" title="Documentos publicados">Contagem pela data de publicação no site de origem. Documentos antigos colocados de novo online contam no ano dessa publicação.</SectionHead>
+        <section aria-labelledby={anchor.documentos}>
+          <SectionHead id={anchor.documentos} title="Documentos publicados">Contagem pela data de publicação no site de origem. Documentos antigos colocados de novo online contam no ano dessa publicação.</SectionHead>
           <ScrollTable label="Documentos publicados por ano e tipo">
             <table className="mt-0 w-full min-w-[32rem] text-left text-sm">
               <caption className="sr-only">Documentos oficiais publicados por ano e tipo</caption>
@@ -152,8 +148,8 @@ export default async function MetricasPage() {
           <p className="mt-2 text-sm"><ExternalLink href="/fontes">Consultar todos os documentos</ExternalLink></p>
         </section>
 
-        <section aria-labelledby="atualizacao">
-          <SectionHead id="atualizacao" title="Atualização dos dados" />
+        <section aria-labelledby={anchor.atualizacao}>
+          <SectionHead id={anchor.atualizacao} title="Atualização dos dados" />
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             <Bars title="Registos novos por mês" unit="Registos" format={formatNumber} rows={newRecords.map((row) => ({ label: row.period, value: row.value }))} />
             <Bars title="Consultas às fontes por mês" unit="Consultas" format={formatNumber} rows={runs.map((row) => ({ label: row.period, value: row.value }))} />

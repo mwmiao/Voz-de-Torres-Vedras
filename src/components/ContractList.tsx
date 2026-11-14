@@ -4,7 +4,7 @@ import { displayTitle } from "@/lib/display-title";
 import { formatDate, formatEur } from "@/lib/format";
 import { SummaryBlock } from "./civic";
 import { SourceChips } from "./Receipts";
-import { StackedCell, StackedRow, StackedTable } from "./StackedTable";
+import { StackedTable, type StackedColumn } from "./StackedTable";
 
 export type ContractRow = Contract & { modifications: ContractModification[]; sources: Source[] };
 
@@ -16,43 +16,54 @@ type Props = {
   supplierHref: (name: string) => string;
 };
 
-const COLUMNS = [{ label: "Data" }, { label: "Contrato" }, { label: "Fornecedor" }, { label: "Valor", right: true }, { label: "Fonte" }];
-
 export function ContractList({ contracts, summaries, currentSupplier, supplierHref }: Props) {
-  return (
-    <StackedTable caption="Contratos, com data, objeto, fornecedor, procedimento, valor e fonte" columns={COLUMNS}>
-      {contracts.map((contract) => {
+  const columns: StackedColumn<ContractRow>[] = [
+    {
+      label: "Data",
+      className: "whitespace-nowrap text-muted",
+      cell: (contract) => (contract.signedAt ? formatDate(contract.signedAt) : "Data não indicada"),
+    },
+    {
+      label: "Contrato",
+      gap: 1,
+      cell: (contract) => {
         const summary = summaries.get(contract.baseId);
         return (
-          <StackedRow key={contract.id}>
-            <StackedCell className="whitespace-nowrap text-muted">{contract.signedAt ? formatDate(contract.signedAt) : "Data não indicada"}</StackedCell>
-            <StackedCell gap={1}>
-              <span className="font-medium [overflow-wrap:anywhere]">{displayTitle(contract.title)}</span>
-              <span className="mt-0.5 block text-xs text-muted">{contract.procedureType} · {contract.awardingBody}</span>
-              {contract.modifications.map((modification) => (
-                <span key={modification.id} className="mt-0.5 block text-xs text-muted">
-                  Modificação{modification.date ? ` de ${formatDate(modification.date)}` : ""}
-                  {modification.newPriceEur ? `: novo valor ${formatEur(modification.newPriceEur)}` : ""}
-                </span>
-              ))}
-              {summary ? (
-                <details className="mt-1">
-                  <summary className="cursor-pointer text-sm underline">Resumo simples</summary>
-                  <div className="mt-2"><SummaryBlock summary={summary} heading={false} /></div>
-                </details>
-              ) : null}
-            </StackedCell>
-            <StackedCell gap={1} className="md:w-56">
-              <span className="text-muted md:hidden">Fornecedor: </span>
-              {contract.supplierIsPerson || currentSupplier === contract.supplierName
-                ? contract.supplierName
-                : <Link href={supplierHref(contract.supplierName)} className="underline" title="Ver todos os contratos deste fornecedor">{contract.supplierName}</Link>}
-            </StackedCell>
-            <StackedCell gap={1} className="whitespace-nowrap font-semibold tabular-nums md:text-right">{formatEur(contract.priceEur)}</StackedCell>
-            <StackedCell gap={2}><SourceChips sources={contract.sources} /></StackedCell>
-          </StackedRow>
+          <>
+            <span className="font-medium [overflow-wrap:anywhere]">{displayTitle(contract.title)}</span>
+            <span className="mt-0.5 block text-xs text-muted">{contract.procedureType} · {contract.awardingBody}</span>
+            {contract.modifications.map((modification) => (
+              <span key={modification.id} className="mt-0.5 block text-xs text-muted">
+                Modificação{modification.date ? ` de ${formatDate(modification.date)}` : ""}
+                {modification.newPriceEur ? `: novo valor ${formatEur(modification.newPriceEur)}` : ""}
+              </span>
+            ))}
+            {summary ? (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-sm underline">Resumo simples</summary>
+                <div className="mt-2"><SummaryBlock summary={summary} heading={false} /></div>
+              </details>
+            ) : null}
+          </>
         );
-      })}
-    </StackedTable>
-  );
+      },
+    },
+    {
+      label: "Fornecedor",
+      gap: 1,
+      className: "md:w-56",
+      cell: (contract) => (
+        <>
+          <span className="text-muted md:hidden">Fornecedor: </span>
+          {contract.supplierIsPerson || currentSupplier === contract.supplierName
+            ? contract.supplierName
+            : <Link href={supplierHref(contract.supplierName)} className="underline" title="Ver todos os contratos deste fornecedor">{contract.supplierName}</Link>}
+        </>
+      ),
+    },
+    { label: "Valor", right: true, gap: 1, className: "whitespace-nowrap font-semibold tabular-nums", cell: (contract) => formatEur(contract.priceEur) },
+    { label: "Fonte", gap: 2, cell: (contract) => <SourceChips sources={contract.sources} /> },
+  ];
+
+  return <StackedTable caption="Contratos, com data, objeto, fornecedor, procedimento, valor e fonte" rows={contracts} rowKey={(contract) => contract.id} columns={columns} />;
 }

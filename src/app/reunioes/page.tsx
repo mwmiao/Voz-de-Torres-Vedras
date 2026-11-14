@@ -2,7 +2,7 @@ import type { Meeting, Prisma, Source } from "@prisma/client";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DecisionList } from "@/components/DecisionTable";
-import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
+import { CsvLink, KindLabel, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { Disclosure, EmptyState, FilterPanel, Pagination, SectionHead } from "@/components/civic";
 import { SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
@@ -76,18 +76,20 @@ export default async function ReunioesPage({ searchParams }: { searchParams: Pro
   const recent = [...upcoming, ...past.slice(0, RECENT_MEETINGS)];
   const older = past.slice(RECENT_MEETINGS);
 
+  const { nav, id: anchor } = pageSections({ reunioes: "Reuniões", decisoes: "Decisões" });
+
   return (
     <>
       <PageHead
         title="Reuniões e decisões"
         kicker={<KindLabel kind="REGISTO_OFICIAL" />}
-        sections={[{ href: "#reunioes", label: "Reuniões" }, { href: "#decisoes", label: "Decisões" }, { href: "/dossies", label: "Por assunto (dossiês)" }]}
+        sections={[...nav, { href: "/dossies", label: "Por assunto (dossiês)" }]}
       >
         <p>O que a Assembleia Municipal e a Câmara discutiram e decidiram. Cada registo liga ao edital, à ata ou ao vídeo oficial.</p>
       </PageHead>
       <div className="mx-auto max-w-6xl space-y-10 px-4 py-8">
-        <section aria-labelledby="reunioes">
-          <SectionHead id="reunioes" title="Reuniões recentes" action={<CsvLink href="/dados/reunioes.csv" />} />
+        <section aria-labelledby={anchor.reunioes}>
+          <SectionHead id={anchor.reunioes} title="Reuniões recentes" action={<CsvLink href="/dados/reunioes.csv" />} />
           <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-surface">
             {recent.map((meeting) => <MeetingItem key={meeting.id} meeting={meeting} />)}
           </ul>
@@ -102,8 +104,8 @@ export default async function ReunioesPage({ searchParams }: { searchParams: Pro
           ) : null}
         </section>
 
-        <section aria-labelledby="decisoes">
-          <SectionHead id="decisoes" title="Decisões" action={<CsvLink href={`/dados/decisoes.csv?${queryString(filters)}`} />}>
+        <section aria-labelledby={anchor.decisoes}>
+          <SectionHead id={anchor.decisoes} title="Decisões" action={<CsvLink href={`/dados/decisoes.csv?${queryString(filters)}`} />}>
             As deliberações do Executivo Municipal ainda não estão transcritas ponto a ponto, porque o site da Câmara exclui os seus PDF do acesso automático. As atas estão ligadas em cada reunião.
           </SectionHead>
           <div className="mt-3">

@@ -1,7 +1,7 @@
 import type { AlertSeverity, AlertType, Prisma } from "@prisma/client";
 import type { Metadata } from "next";
 import { AlertCard, Disclosure, EmptyState, ExternalLink, FilterPanel, Pagination, SectionHead } from "@/components/civic";
-import { CsvLink, LastUpdated, PageHead } from "@/components/labels";
+import { CsvLink, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { activeAlertWhere, ALERT_TYPE_LABEL, expiredAlertWhere, FREGUESIAS, groupAlerts, SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/alerts";
 import { db } from "@/lib/db";
 import { queryString, type SearchParams } from "@/lib/filters";
@@ -59,9 +59,11 @@ export default async function AlertasPage({ searchParams }: { searchParams: Prom
   const filtered = Object.values(filters).some(Boolean);
   const pages = Math.max(1, Math.ceil(archiveTotal / PAGE_SIZE));
 
+  const { nav, id: anchor } = pageSections({ ativos: `Ativos (${ordered.length})`, arquivo: `Arquivo (${archiveTotal})` });
+
   return (
     <>
-      <PageHead title="Alertas" sections={[{ href: "#ativos", label: `Ativos (${ordered.length})` }, { href: "#arquivo", label: `Arquivo (${archiveTotal})` }]}>
+      <PageHead title="Alertas" sections={nav}>
         <p>Avisos oficiais para Torres Vedras. Só entram avisos de entidades públicas: nunca redes sociais ou relatos não verificados. Em emergência, ligue 112.</p>
         <LastUpdated date={checked._max.lastCheckedAt} className="mt-1" label="Fontes verificadas pela última vez" />
       </PageHead>
@@ -93,16 +95,16 @@ export default async function AlertasPage({ searchParams }: { searchParams: Prom
         </form>
         </FilterPanel>
 
-        <section aria-labelledby="ativos">
-          <SectionHead id="ativos" title={`Ativos (${ordered.length})`} action={<CsvLink href="/dados/alertas.csv" />} />
+        <section aria-labelledby={anchor.ativos}>
+          <SectionHead id={anchor.ativos} title={`Ativos (${ordered.length})`} action={<CsvLink href="/dados/alertas.csv" />} />
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {ordered.map(({ alert, also }) => <AlertCard key={alert.id} alert={alert} also={also} />)}
           </div>
           {ordered.length === 0 ? <EmptyState title={filtered ? "Nenhum alerta ativo corresponde aos filtros." : "Sem alertas oficiais ativos neste momento."}>Isto não garante que não existam: consulte também os portais oficiais abaixo.</EmptyState> : null}
         </section>
 
-        <section aria-labelledby="arquivo">
-          <SectionHead id="arquivo" title={`Arquivo (${archiveTotal})`}>Avisos terminados, por ordem do mais recente.</SectionHead>
+        <section aria-labelledby={anchor.arquivo}>
+          <SectionHead id={anchor.arquivo} title={`Arquivo (${archiveTotal})`}>Avisos terminados, por ordem do mais recente.</SectionHead>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {archived.map(({ alert, also }) => <AlertCard key={alert.id} alert={alert} also={also} />)}
           </div>

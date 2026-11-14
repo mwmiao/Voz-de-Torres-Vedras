@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Bars } from "@/components/Bars";
 import { ContractList } from "@/components/ContractList";
 import { EmptyState, FilterPanel, MetricCard, Pagination, SectionHead } from "@/components/civic";
-import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
+import { CsvLink, KindLabel, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { AWARDING_ENTITIES } from "@/lib/entities";
@@ -63,17 +63,14 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
   const supplierLink = (name: string) => `/contratos?${queryString({ ano: params.ano, entidade: params.entidade, fornecedor: name })}#lista`;
   const withoutSupplier = `/contratos?${queryString({ ...filters, fornecedor: undefined })}#lista`;
 
+  const { nav, id: anchor } = pageSections({ lista: "Lista de contratos", totais: "Totais por procedimento e fornecedor", procedimentos: "Concursos recentes", portais: "Portais oficiais" });
+
   return (
     <>
       <PageHead
         title="Contratos"
         kicker={<KindLabel kind="REGISTO_OFICIAL" />}
-        sections={[
-          { href: "#lista", label: "Lista de contratos" },
-          { href: "#totais", label: "Totais por procedimento e fornecedor" },
-          { href: "#procedimentos", label: "Concursos recentes" },
-          { href: "#portais", label: "Portais oficiais" },
-        ]}
+        sections={nav}
       >
         <p>Contratos do Município e dos SMAS registados no Portal BASE. A presença de um contrato ou fornecedor aqui não implica qualquer juízo sobre ele.</p>
         <LastUpdated date={stats._max.updatedAt} className="mt-1" />
@@ -123,8 +120,8 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
           <MetricCard label={`Valor contratual somado ${period}`.trim()} value={formatEur(stats._sum.priceEur ?? 0)} note={filtered ? "Soma dos contratos que correspondem aos filtros" : "Soma de todos os contratos registados"} />
         </dl>
 
-        <section aria-labelledby="lista">
-          <SectionHead id="lista" title={`Lista de contratos (${formatNumber(count)})`} action={<CsvLink href={`/dados/contratos.csv?${queryString(filters)}`} />} />
+        <section aria-labelledby={anchor.lista}>
+          <SectionHead id={anchor.lista} title={`Lista de contratos (${formatNumber(count)})`} action={<CsvLink href={`/dados/contratos.csv?${queryString(filters)}`} />} />
           {contracts.length > 0 ? (
             <div className="mt-3">
               <ContractList contracts={contracts} summaries={summaries} currentSupplier={params.fornecedor} supplierHref={supplierLink} />
@@ -133,8 +130,8 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
           <Pagination page={page} pages={pages} link={pageLink} />
         </section>
 
-        <section aria-labelledby="totais">
-          <SectionHead id="totais" title="Totais por procedimento, categoria e fornecedor">
+        <section aria-labelledby={anchor.totais}>
+          <SectionHead id={anchor.totais} title="Totais por procedimento, categoria e fornecedor">
             Somas {period} dos contratos {filtered ? "que correspondem aos filtros" : "registados"}. São descritivas, para orientar a consulta, e não indicam qualquer irregularidade. Pessoas singulares não entram na lista de fornecedores.
           </SectionHead>
           <div className="mt-3 grid gap-4 lg:grid-cols-3">
@@ -144,16 +141,16 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
           </div>
         </section>
 
-        <section aria-labelledby="procedimentos">
-          <h2 id="procedimentos" className="font-serif text-2xl font-semibold">Concursos recentes</h2>
+        <section aria-labelledby={anchor.procedimentos}>
+          <h2 id={anchor.procedimentos} className="font-serif text-2xl font-semibold">Concursos recentes</h2>
           <p className="text-sm text-muted">Concursos e anúncios de procedimento publicados, antes de haver contrato. <Link href="/fontes?tipo=CONCURSO" className="underline">Ver todos</Link></p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {tenders.map((tender) => <Receipt key={tender.id} source={tender} />)}
           </div>
         </section>
 
-        <section aria-labelledby="portais">
-          <h2 id="portais" className="font-serif text-2xl font-semibold">Portais oficiais</h2>
+        <section aria-labelledby={anchor.portais}>
+          <h2 id={anchor.portais} className="font-serif text-2xl font-semibold">Portais oficiais</h2>
           <ul className="mt-2 space-y-1">
             {PORTALS.map((portal) => <li key={portal.url}><a href={portal.url} target="_blank" rel="noopener noreferrer" className="underline">{portal.label}</a></li>)}
           </ul>

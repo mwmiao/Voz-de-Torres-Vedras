@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Bars } from "@/components/Bars";
 import { IncidentSection } from "@/components/IncidentSection";
 import { Disclosure, EmptyState, ExternalLink, MetricCard, ScrollTable, SectionHead, TrendText } from "@/components/civic";
-import { CsvLink, LastUpdated, PageHead } from "@/components/labels";
+import { CsvLink, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { db } from "@/lib/db";
 import { queryString, type SearchParams } from "@/lib/filters";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -42,8 +42,9 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
   const updated = records.reduce<Date | null>((date, record) => (!date || record.retrievalDate > date ? record.retrievalDate : date), null);
   const selectedFreguesia = freguesias.find((item) => item.slug === params.freguesia);
 
+  const { nav, id: anchor } = pageSections({ ocorrencias: "Ocorrências recentes", estatisticas: "Crimes registados por ano" });
   const head = (
-    <PageHead title="Segurança" sections={[{ href: "#ocorrencias", label: "Ocorrências recentes" }, { href: "#estatisticas", label: "Crimes registados por ano" }]}>
+    <PageHead title="Segurança" sections={nav}>
       <p>Ocorrências publicadas nas últimas duas semanas, num mapa com localizações aproximadas, e crimes registados por ano, com dados do INE e da Direção-Geral da Política de Justiça.</p>
       <LastUpdated date={updated} className="mt-1" label="Estatísticas anuais do INE recolhidas a" />
     </PageHead>
@@ -54,7 +55,7 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
       <>
         {head}
         <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-          <IncidentSection params={params} />
+          <IncidentSection id={anchor.ocorrencias} params={params} />
           <EmptyState title="As estatísticas anuais ainda não foram recolhidas.">Voltarão a ser consultadas na próxima atualização.</EmptyState>
         </div>
       </>
@@ -89,10 +90,10 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
     <>
       {head}
       <div className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-        <IncidentSection params={params} />
+        <IncidentSection id={anchor.ocorrencias} params={params} />
 
         <div className="space-y-4 border-t border-line pt-8">
-          <SectionHead id="estatisticas" title="Crimes registados por ano">Estatísticas oficiais anuais do concelho. São dados diferentes das ocorrências acima e chegam com mais de um ano de atraso.</SectionHead>
+          <SectionHead id={anchor.estatisticas} title="Crimes registados por ano">Estatísticas oficiais anuais do concelho. São dados diferentes das ocorrências acima e chegam com mais de um ano de atraso.</SectionHead>
           <p className="rounded-lg border border-line bg-record-soft p-4 font-medium">{CRIME_DISCLAIMER}</p>
           <nav aria-label="Vistas das estatísticas anuais" className="flex gap-2">
             <Link href="/seguranca#estatisticas" aria-current={!detailed ? "page" : undefined} className={!detailed ? "btn no-underline" : "btn-quiet no-underline"}>Vista simples</Link>

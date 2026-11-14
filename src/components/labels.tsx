@@ -34,6 +34,18 @@ export function OutcomeBadge({ outcome }: { outcome: Outcome }) {
 
 export type PageSection = { href: string; label: string };
 
+/**
+ * Âncoras de uma página, escritas uma só vez: `nav` vai para `PageHead` e `id` dá o nome de cada secção
+ * aos títulos (`id.resumo`). Uma âncora sem título, ou o inverso, deixa de compilar.
+ */
+export function pageSections<K extends string>(labels: Record<K, string>): { nav: PageSection[]; id: { [P in K]: P } } {
+  const ids = Object.keys(labels) as K[];
+  return {
+    nav: ids.map((key) => ({ href: `#${key}`, label: labels[key] })),
+    id: Object.fromEntries(ids.map((key) => [key, key])) as { [P in K]: P },
+  };
+}
+
 /** `sections` cria a linha «Nesta página», para saltar para cada parte de uma página longa. */
 export function PageHead({ kicker, title, children, sections }: { kicker?: ReactNode; title: string; children?: ReactNode; sections?: PageSection[] }) {
   return (

@@ -43,7 +43,7 @@ const POLICY = [
   "Os resumos são escritos a partir de modelos neutros: não reproduzem nomes, idades, moradas, matrículas ou outros pormenores, nem atribuem culpa. Se uma publicação de rede social expõe dados pessoais, a ligação não é publicada.",
 ];
 
-export async function IncidentSection({ params }: { params: SearchParams }) {
+export async function IncidentSection({ id, params }: { id: string; params: SearchParams }) {
   const now = new Date();
   const range = clampRange(now, params.de, params.ate);
   // Margem de um dia: o corte exato faz-se pelo dia civil de Lisboa.
@@ -66,13 +66,13 @@ export async function IncidentSection({ params }: { params: SearchParams }) {
   const fonte = params.fonte?.slice(0, 80) ?? "";
 
   return (
-    <section aria-labelledby="ocorrencias" className="space-y-4">
+    <section aria-labelledby={id} className="space-y-4">
       <div>
         <p className="inline-flex items-center gap-1.5 rounded-full border border-record/40 bg-record-soft px-3 py-1 text-sm font-semibold text-record">
           <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="3" width="12" height="11" rx="1.5" /><path d="M2 6.5h12M5 1.5v3M11 1.5v3" /></svg>
           Só os últimos {WINDOW_DAYS} dias: {formatLongDay(range.min)} a {formatLongDay(range.max)}
         </p>
-        <h2 id="ocorrencias" className="mt-2 font-serif text-2xl font-semibold">Ocorrências recentes</h2>
+        <h2 id={id} className="mt-2 font-serif text-2xl font-semibold">Ocorrências recentes</h2>
         <p className="mt-1 max-w-3xl">{METHOD_INTRO}</p>
       </div>
 

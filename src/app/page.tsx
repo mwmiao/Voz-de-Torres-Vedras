@@ -1,6 +1,6 @@
 import type { Body, Meeting } from "@prisma/client";
 import Link from "next/link";
-import { alertPeriod, EmptyState, ExternalLink, MetricCard, SectionHead, SeverityBadge, TrendText } from "@/components/civic";
+import { AlertRow, EmptyState, ExternalLink, MetricCard, SectionHead, TrendText } from "@/components/civic";
 import { OutcomeBadge } from "@/components/labels";
 import { activeAlertWhere, groupAlerts, SEVERITY_ORDER } from "@/lib/alerts";
 import { db } from "@/lib/db";
@@ -75,7 +75,7 @@ export default async function Home() {
   ]);
 
   const updates = summaries.flatMap((summary) => (summary ? [summary] : []));
-  // O mesmo aviso publicado por duas entidades conta uma vez.
+  // O mesmo aviso publicado por duas entidades conta uma vez. A consulta não tem limite, por isso o total é o das ativas.
   const active = groupAlerts([...alerts].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)));
   const shown = active.slice(0, HOME_ALERTS);
   const year = now.getUTCFullYear();
@@ -111,13 +111,7 @@ export default async function Home() {
         />
         {shown.length > 0 ? (
           <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-surface">
-            {shown.map(({ alert }) => (
-              <li key={alert.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-sm">
-                <SeverityBadge severity={alert.severity} />
-                <Link href={`/alertas#alerta-${alert.id}`} className="min-w-0 font-semibold underline">{displayTitle(alert.title)}</Link>
-                <span className="text-muted">{alertPeriod(alert)} · {alert.geographicArea}</span>
-              </li>
-            ))}
+            {shown.map(({ alert }) => <AlertRow key={alert.id} alert={alert} />)}
           </ul>
         ) : (
           <p className="mt-2 text-sm text-muted">Sem alertas oficiais ativos para Torres Vedras nas fontes acompanhadas.</p>

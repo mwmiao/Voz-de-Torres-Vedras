@@ -8,12 +8,20 @@ import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { contractOrder, contractWhere, queryString, type SearchParams } from "@/lib/filters";
 import { formatEur, formatNumber } from "@/lib/format";
+import { AWARDING_ENTITIES } from "@/lib/import/base";
 import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Contratos", description: "Contratos públicos do Município e dos SMAS de Torres Vedras, com fornecedores, valores e ligação ao Portal BASE." };
 
 const PAGE_SIZE = 20;
+
+/** O período a que os totais dizem respeito fica sempre escrito, para ninguém ter de o adivinhar. `years` vem por ordem decrescente. */
+function periodLabel(selected: string | undefined, years: number[]): string {
+  if (selected && years.includes(Number(selected))) return `em ${selected}`;
+  if (years.length > 1) return `de ${years[years.length - 1]} a ${years[0]}`;
+  return years.length === 1 ? `em ${years[0]}` : "";
+}
 
 const PORTALS = [
   { label: "Portal BASE: contratos do Município", url: "https://www.base.gov.pt/Base/pt/ResultadosPesquisa?type=contratos&query=adjudicanteid%3D579" },
@@ -51,10 +59,7 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
   const summaries = await summaryMap("contrato", contracts.map((contract) => contract.baseId));
   const signed = years.map((row) => row.signedAt?.getUTCFullYear()).filter((year): year is number => Boolean(year));
   const yearOptions = [...new Set(signed)].sort((a, b) => b - a);
-  // O período a que os totais dizem respeito fica sempre escrito, para ninguém ter de o adivinhar.
-  const period = params.ano && yearOptions.includes(Number(params.ano))
-    ? `em ${params.ano}`
-    : yearOptions.length > 1 ? `de ${yearOptions[yearOptions.length - 1]} a ${yearOptions[0]}` : yearOptions.length === 1 ? `em ${yearOptions[0]}` : "";
+  const period = periodLabel(params.ano, yearOptions);
   const supplierLink = (name: string) => `/contratos?${queryString({ ano: params.ano, entidade: params.entidade, fornecedor: name })}#lista`;
   const withoutSupplier = `/contratos?${queryString({ ...filters, fornecedor: undefined })}#lista`;
 
@@ -87,8 +92,7 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
             <label className="text-sm font-medium">Entidade adjudicante
               <select name="entidade" defaultValue={params.entidade ?? ""} className="field mt-1">
                 <option value="">Todas</option>
-                <option value="502173653">Município de Torres Vedras</option>
-                <option value="680015973">SMAS de Torres Vedras</option>
+                {AWARDING_ENTITIES.map((entity) => <option key={entity.nif} value={entity.nif}>{entity.name}</option>)}
               </select>
             </label>
             <label className="text-sm font-medium">Procedimento

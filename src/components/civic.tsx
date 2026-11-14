@@ -36,7 +36,7 @@ export function SeverityBadge({ severity }: { severity: AlertSeverity }) {
   );
 }
 
-export function alertPeriod(alert: Alert): string {
+function alertPeriod(alert: Alert): string {
   const format = alert.hasTime ? formatDateTime : formatDate;
   const start = alert.startsAt ? format(alert.startsAt) : null;
   if (alert.hasOfficialEnd && alert.endsAt) return start && start !== format(alert.endsAt) ? `De ${start} a ${format(alert.endsAt)}` : `A ${format(alert.endsAt)}`;
@@ -50,6 +50,17 @@ const hostOf = (url: string) => {
     return "outra fonte";
   }
 };
+
+/** Uma linha por aviso, para listas curtas como a da página inicial. Ligada ao cartão completo em /alertas. */
+export function AlertRow({ alert }: { alert: Alert }) {
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-sm">
+      <SeverityBadge severity={alert.severity} />
+      <Link href={`/alertas#alerta-${alert.id}`} className="min-w-0 font-semibold underline">{displayTitle(alert.title)}</Link>
+      <span className="text-muted">{alertPeriod(alert)} · {alert.geographicArea}</span>
+    </li>
+  );
+}
 
 /** `also`: o mesmo aviso publicado por outras entidades, mostrado como fontes adicionais. */
 export function AlertCard({ alert, compact = false, also = [] }: { alert: Alert; compact?: boolean; also?: Alert[] }) {

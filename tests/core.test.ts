@@ -196,7 +196,7 @@ describe("formatação", () => {
 
 describe("apresentação", () => {
   it("passa a frase normal os títulos só em maiúsculas e deixa os outros como estão", async () => {
-    const { displayTitle } = await import("../src/lib/format");
+    const { displayTitle } = await import("../src/lib/display-title");
     expect(displayTitle("AVISOS DE TRÂNSITO | CONCELHO TORRES VEDRAS")).toBe("Avisos de trânsito | Concelho Torres Vedras");
     expect(displayTitle("CORTE DE TRÂNSITO NO CM 1387")).toBe("Corte de trânsito no CM 1387");
     expect(displayTitle("Aquisição de serviços dos SMAS")).toBe("Aquisição de serviços dos SMAS");

@@ -4,8 +4,9 @@ import { alertPeriod, EmptyState, ExternalLink, MetricCard, SectionHead, Severit
 import { OutcomeBadge } from "@/components/labels";
 import { activeAlertWhere, groupAlerts, SEVERITY_ORDER } from "@/lib/alerts";
 import { db } from "@/lib/db";
+import { displayTitle } from "@/lib/display-title";
 import { SOURCED_DECISION } from "@/lib/filters";
-import { BODY_LABEL, displayTitle, formatDate, formatEur, formatNumber, formatTime } from "@/lib/format";
+import { BODY_LABEL, formatDate, formatEur, formatNumber, formatTime } from "@/lib/format";
 import { latestMetric, metricSeries } from "@/lib/metrics";
 import { SUMMARY_TYPE_LABEL } from "@/lib/summaries";
 import { compareValues } from "@/lib/trends";

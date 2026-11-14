@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bars } from "@/components/Bars";
-import { EmptyState, FilterPanel, MetricCard, Pagination, SectionHead, SummaryBlock } from "@/components/civic";
+import { ContractList } from "@/components/ContractList";
+import { EmptyState, FilterPanel, MetricCard, Pagination, SectionHead } from "@/components/civic";
 import { CsvLink, KindLabel, LastUpdated, PageHead } from "@/components/labels";
-import { Receipt, SourceChips } from "@/components/Receipts";
+import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { contractOrder, contractWhere, queryString, type SearchParams } from "@/lib/filters";
-import { displayTitle, formatDate, formatEur, formatNumber } from "@/lib/format";
+import { formatEur, formatNumber } from "@/lib/format";
 import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";
@@ -121,60 +122,8 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
         <section aria-labelledby="lista">
           <SectionHead id="lista" title={`Lista de contratos (${formatNumber(count)})`} action={<CsvLink href={`/dados/contratos.csv?${queryString(filters)}`} />} />
           {contracts.length > 0 ? (
-            <div className="mt-3 overflow-hidden rounded-lg border border-line bg-surface">
-              {/* Em ecrãs pequenos cada contrato é um bloco; em ecrãs largos, uma linha de tabela. */}
-              <table className="w-full border-collapse text-left text-sm">
-                <caption className="sr-only">Contratos, com data, objeto, fornecedor, procedimento, valor e fonte</caption>
-                <thead className="hidden bg-paper text-xs text-muted md:table-header-group">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 font-semibold">Data</th>
-                    <th scope="col" className="px-3 py-2 font-semibold">Contrato</th>
-                    <th scope="col" className="px-3 py-2 font-semibold">Fornecedor</th>
-                    <th scope="col" className="px-3 py-2 text-right font-semibold">Valor</th>
-                    <th scope="col" className="px-3 py-2 font-semibold">Fonte</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contracts.map((contract) => {
-                    const summary = summaries.get(contract.baseId);
-                    return (
-                      <tr key={contract.id} className="block border-t border-line p-3 first:border-t-0 md:table-row md:p-0">
-                        <td className="block whitespace-nowrap align-top text-muted md:table-cell md:px-3 md:py-3">
-                          {contract.signedAt ? formatDate(contract.signedAt) : "Data não indicada"}
-                        </td>
-                        <td className="mt-1 block align-top md:mt-0 md:table-cell md:px-3 md:py-3">
-                          <span className="font-medium [overflow-wrap:anywhere]">{displayTitle(contract.title)}</span>
-                          <span className="mt-0.5 block text-xs text-muted">{contract.procedureType} · {contract.awardingBody}</span>
-                          {contract.modifications.map((modification) => (
-                            <span key={modification.id} className="mt-0.5 block text-xs text-muted">
-                              Modificação{modification.date ? ` de ${formatDate(modification.date)}` : ""}
-                              {modification.newPriceEur ? `: novo valor ${formatEur(modification.newPriceEur)}` : ""}
-                            </span>
-                          ))}
-                          {summary ? (
-                            <details className="mt-1">
-                              <summary className="cursor-pointer text-sm underline">Resumo simples</summary>
-                              <div className="mt-2"><SummaryBlock summary={summary} heading={false} /></div>
-                            </details>
-                          ) : null}
-                        </td>
-                        <td className="mt-1 block align-top md:mt-0 md:table-cell md:w-56 md:px-3 md:py-3">
-                          <span className="text-muted md:hidden">Fornecedor: </span>
-                          {contract.supplierIsPerson || params.fornecedor === contract.supplierName
-                            ? contract.supplierName
-                            : <Link href={supplierLink(contract.supplierName)} className="underline" title="Ver todos os contratos deste fornecedor">{contract.supplierName}</Link>}
-                        </td>
-                        <td className="mt-1 block whitespace-nowrap align-top font-semibold tabular-nums md:mt-0 md:table-cell md:px-3 md:py-3 md:text-right">
-                          {formatEur(contract.priceEur)}
-                        </td>
-                        <td className="mt-2 block align-top md:mt-0 md:table-cell md:px-3 md:py-3">
-                          <SourceChips sources={contract.sources} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="mt-3">
+              <ContractList contracts={contracts} summaries={summaries} currentSupplier={params.fornecedor} supplierHref={supplierLink} />
             </div>
           ) : <div className="mt-3"><EmptyState title="Nenhum contrato corresponde aos filtros."><Link href="/contratos" className="underline">Limpar filtros</Link></EmptyState></div>}
           <Pagination page={page} pages={pages} link={pageLink} />

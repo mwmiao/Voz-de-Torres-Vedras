@@ -2,7 +2,8 @@ import type { Alert, AlertSeverity, Summary } from "@prisma/client";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ALERT_TYPE_LABEL, SEVERITY_LABEL } from "@/lib/alerts";
-import { displayTitle, formatDate, formatDateTime } from "@/lib/format";
+import { displayTitle } from "@/lib/display-title";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { SUMMARY_TYPE_LABEL, SUMMARY_UNAVAILABLE } from "@/lib/summaries";
 import type { Trend } from "@/lib/trends";
 

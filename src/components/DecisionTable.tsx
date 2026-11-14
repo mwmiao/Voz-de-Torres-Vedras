@@ -2,7 +2,7 @@ import type { Decision, Meeting, Source, Summary } from "@prisma/client";
 import Link from "next/link";
 import { BODY_LABEL, formatDate, voteSummary } from "@/lib/format";
 import { SummaryBlock } from "./civic";
-import { OutcomeBadge } from "./labels";
+import { LastUpdated, OutcomeBadge } from "./labels";
 import { SourceChips } from "./Receipts";
 import { StackedCell, StackedRow, StackedTable } from "./StackedTable";
 
@@ -32,6 +32,7 @@ export function DecisionList({ decisions, summaries }: { decisions: DecisionRow[
                 <div className="mt-2"><SummaryBlock summary={summaries.get(decision.slug)!} heading={false} /></div>
               </details>
             ) : null}
+            <LastUpdated date={decision.updatedAt} className="mt-1 font-normal" />
           </StackedCell>
           <StackedCell gap={2} className="md:w-44">
             <OutcomeBadge outcome={decision.outcome} />

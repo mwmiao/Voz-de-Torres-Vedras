@@ -91,6 +91,7 @@ export default async function OrcamentoPage() {
                 <dd className="mt-1 font-serif text-2xl font-semibold tabular-nums">{amount(entry)}</dd>
                 {entry.note ? <dd className="mt-1 text-xs text-muted">{entry.note}</dd> : null}
                 <dd className="mt-2 flex flex-wrap items-center gap-2"><OfficialBadge /><SourceChips sources={entry.sources} /></dd>
+                <dd><LastUpdated date={entry.updatedAt} className="mt-2" /></dd>
               </div>
             ))}
           </dl>
@@ -121,7 +122,7 @@ export default async function OrcamentoPage() {
               <tbody>
                 {[...spending, ...revenue].map((entry) => (
                   <tr key={entry.id} className="border-t border-line align-top">
-                    <td className="px-3 py-2">{entry.label}{entry.note ? <span className="block text-xs text-muted">{entry.note}</span> : null}</td>
+                    <td className="px-3 py-2">{entry.label}{entry.note ? <span className="block text-xs text-muted">{entry.note}</span> : null}<LastUpdated date={entry.updatedAt} /></td>
                     <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{amount(entry)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted">{entry.asOf ? formatDate(entry.asOf) : "—"}</td>
                     <td className="px-3 py-2"><SourceChips sources={entry.sources} /></td>
@@ -144,6 +145,7 @@ export default async function OrcamentoPage() {
                 <dd className="mt-1 font-serif text-2xl font-semibold tabular-nums">{formatEur(fact.amountEur)}</dd>
                 {fact.note ? <dd className="mt-1 text-xs text-muted">{fact.note}</dd> : null}
                 <dd className="mt-2 flex flex-wrap items-center gap-2"><OfficialBadge /><SourceChips sources={fact.sources} /></dd>
+                <dd><LastUpdated date={fact.updatedAt} className="mt-2" /></dd>
               </div>
             ))}
           </dl>

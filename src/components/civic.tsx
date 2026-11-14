@@ -51,19 +51,23 @@ const hostOf = (url: string) => {
   }
 };
 
-/** Uma linha por aviso, para listas curtas como a da página inicial. Ligada ao cartão completo em /alertas. */
-export function AlertRow({ alert }: { alert: Alert }) {
+/** Lista curta de avisos, uma linha por aviso, como a da página inicial. Cada linha liga ao cartão completo em /alertas. */
+export function AlertList({ alerts }: { alerts: Alert[] }) {
   return (
-    <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-sm">
-      <SeverityBadge severity={alert.severity} />
-      <Link href={`/alertas#alerta-${alert.id}`} className="min-w-0 font-semibold underline">{displayTitle(alert.title)}</Link>
-      <span className="text-muted">{alertPeriod(alert)} · {alert.geographicArea}</span>
-    </li>
+    <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
+      {alerts.map((alert) => (
+        <li key={alert.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-sm">
+          <SeverityBadge severity={alert.severity} />
+          <Link href={`/alertas#alerta-${alert.id}`} className="min-w-0 font-semibold underline">{displayTitle(alert.title)}</Link>
+          <span className="text-muted">{alertPeriod(alert)} · {alert.geographicArea}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 /** `also`: o mesmo aviso publicado por outras entidades, mostrado como fontes adicionais. */
-export function AlertCard({ alert, compact = false, also = [] }: { alert: Alert; compact?: boolean; also?: Alert[] }) {
+export function AlertCard({ alert, also = [] }: { alert: Alert; also?: Alert[] }) {
   return (
     <article id={`alerta-${alert.id}`} className={`scroll-mt-36 rounded-lg border border-l-4 border-line bg-surface p-4 ${SEVERITY_STYLE[alert.severity].className}-edge`}>
       <div className="flex flex-wrap items-center gap-2">
@@ -71,7 +75,7 @@ export function AlertCard({ alert, compact = false, also = [] }: { alert: Alert;
         <span className="text-xs font-semibold text-muted">{ALERT_TYPE_LABEL[alert.type]}</span>
       </div>
       <h3 className="mt-2 font-semibold leading-snug">{displayTitle(alert.title)}</h3>
-      {compact ? null : <p className="mt-1 text-sm">{alert.description}</p>}
+      <p className="mt-1 text-sm">{alert.description}</p>
       <dl className="mt-2 grid gap-x-3 gap-y-0.5 text-sm sm:grid-cols-[auto_1fr]">
         <dt className="font-medium text-muted">Quando</dt>
         <dd>{alertPeriod(alert)}</dd>

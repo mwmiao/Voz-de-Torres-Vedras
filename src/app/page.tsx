@@ -1,6 +1,6 @@
 import type { Body, Meeting } from "@prisma/client";
 import Link from "next/link";
-import { AlertRow, EmptyState, ExternalLink, MetricCard, SectionHead, TrendText } from "@/components/civic";
+import { AlertList, EmptyState, ExternalLink, MetricCard, SectionHead, TrendText } from "@/components/civic";
 import { OutcomeBadge } from "@/components/labels";
 import { activeAlertWhere, groupAlerts, SEVERITY_ORDER } from "@/lib/alerts";
 import { db } from "@/lib/db";
@@ -110,9 +110,7 @@ export default async function Home() {
           action={<Link href="/alertas" className="text-sm underline">{active.length > shown.length ? `Ver os ${active.length} alertas` : "Ver alertas e arquivo"}</Link>}
         />
         {shown.length > 0 ? (
-          <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-surface">
-            {shown.map(({ alert }) => <AlertRow key={alert.id} alert={alert} />)}
-          </ul>
+          <div className="mt-3"><AlertList alerts={shown.map(({ alert }) => alert)} /></div>
         ) : (
           <p className="mt-2 text-sm text-muted">Sem alertas oficiais ativos para Torres Vedras nas fontes acompanhadas.</p>
         )}

@@ -12,6 +12,9 @@ Audit scope: standard depth, hotspot-weighted, done directly without subagents. 
 | 002  | Browser smoke test for the Segurança map, in CI | P1 | M | — | DONE |
 | 003  | Content-Security-Policy that keeps the map working | P2 | M | 002 | DONE |
 | 004  | Split `ingestion/sources/index.ts` by domain | P3 | M | — | DONE |
+| 005  | Make `?pagina=` safe with one shared parser | P1 | S | — | TODO |
+| 006  | Add Dependabot for npm, Actions and Docker | P2 | S | — | TODO |
+| 007  | Cap the length of search terms in one helper | P3 | S | 005 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -21,6 +24,14 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - 001 and 004 touch different files and are independent. 004 should be reviewed with `git diff --color-moved`.
 - All plans are on top of the unmerged branch `refactor/ocorrencias-estrutura`; start from that branch (or from `main` once it is merged).
 
+## Second audit (2026-11-15, commit `828b756`)
+
+Standard depth, done directly. Plans 005-007 came from it. Audited: pagination and filter parsing, CSV export routes, CI and data-update workflows, Docker entrypoint, raw-query call sites. Still NOT audited: Prisma schema/migrations, Docker/NAS deployment, accessibility, parsers other than the incident ones.
+
+- 005 and 007 both edit `src/lib/filters.ts` and several pages: do 005 first.
+- 006 is independent.
+- The working tree had an unrelated uncommitted change in `src/lib/incidents.ts` when these were written; executors must not touch it.
+
 ## Findings considered and rejected
 
 - "Segurança page does not hydrate in production" (from the WIP commit message): not reproducible at `2b25824` — production build hydrates, popup and "Ver na lista" work. Plan 002 exists so this class of doubt can be settled by a command.
@@ -28,7 +39,12 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - `csv-parse` moderate (prototype replacement via `columns`): only relevant if untrusted column options reach the parser; the repo parses its own datasets. Not worth a plan.
 - Empty `catch {}` blocks in `ingestion/sources/index.ts:198`, `ingestion/normalizers/index.ts:35`, `ingestion/parsers/*`: inspected — these are deliberate (invalid JSON-LD block, unparsable URL, optional revision map). Only the INE population `.catch(() => null)` is worth a comment, folded into Plan 004.
 
+- Unbounded CSV exports (second audit): the contract table is about 1.6k rows (1.5 MB), so a per-request full export is cheap. Revisit if the dataset grows by an order of magnitude.
+- Missing `Strict-Transport-Security`: belongs to the reverse proxy in front of the NAS, which is not in this repo.
+- `$queryRawUnsafe` in `ingestion/snapshot.ts` and `scripts/data.ts`: table names come from the database schema, not from user input.
+
 ## Direction options (not planned; for the maintainer)
 
 - **Source health history**: `estado-das-fontes` and `npm run diagnose:incidents` show only the latest run, and most sources last ran on 2026-11-02. Keeping a short per-run history would show quietly failing sources.
 - **Review queue for hand-curated sources**: six sources are "Só manual" (PSP, ANEPC, JN, Badaladas, social, curated). A small admin/CLI queue for entering them would use the existing `ocorrencias-curadas` pipeline.
+- **Atom/RSS feed** for `/alertas` and new decisions: the site already publishes nine CSV exports, so a feed would let residents subscribe instead of revisiting. Trade-off: another public surface to keep correct.

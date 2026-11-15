@@ -4,7 +4,7 @@ import Link from "next/link";
 import { EmptyState, FilterPanel, Pagination, SummaryBlock } from "@/components/civic";
 import { CsvLink, PageHead } from "@/components/labels";
 import { db } from "@/lib/db";
-import { queryString, type SearchParams } from "@/lib/filters";
+import { pageNumber, queryString, type SearchParams } from "@/lib/filters";
 import { formatNumber } from "@/lib/format";
 import { searchKey } from "@/lib/search";
 import { SUMMARY_TYPE_LABEL } from "@/lib/summaries";
@@ -16,7 +16,7 @@ const PAGE_SIZE = 12;
 
 export default async function ResumosPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
-  const page = Math.max(1, Number(params.pagina) || 1);
+  const page = pageNumber(params.pagina);
   const q = searchKey(params.q).trim();
   const entityType = params.tipo && params.tipo in SUMMARY_TYPE_LABEL ? params.tipo : undefined;
   const where: Prisma.SummaryWhereInput = {

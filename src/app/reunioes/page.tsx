@@ -6,7 +6,7 @@ import { CsvLink, KindLabel, LastUpdated, PageHead, pageSections } from "@/compo
 import { Disclosure, EmptyState, FilterPanel, Pagination, SectionHead } from "@/components/civic";
 import { SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
-import { decisionOrder, decisionWhere, queryString, type SearchParams } from "@/lib/filters";
+import { decisionOrder, decisionWhere, pageNumber, queryString, type SearchParams } from "@/lib/filters";
 import { BODY_LABEL, formatDate, OUTCOME_LABEL } from "@/lib/format";
 import { summaryMap } from "@/lib/summary-data";
 
@@ -35,7 +35,7 @@ function MeetingItem({ meeting }: { meeting: MeetingRow }) {
 
 export default async function ReunioesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
-  const page = Math.max(1, Number(params.pagina) || 1);
+  const page = pageNumber(params.pagina);
   const base = decisionWhere(params);
   // Por omissão, primeiro o que já tem resultado: os pontos à espera de ata ficam num separador próprio.
   const view = params.resultado || params.vista === "todas" ? "todas" : params.vista === "aguardar" ? "aguardar" : "resultado";

@@ -88,7 +88,7 @@ export function pageNumber(value: string | undefined): number {
 }
 ```
 
-Behavior to preserve: `"3"` → 3; `undefined`, `""`, `"abc"`, `"0"`, `"-2"` → 1. New behavior: `"1.5"` → 1 (previously 1.5, which worked by accident), `"1e21"`/`"Infinity"` → 1, `"99999"` → 10000.
+Behavior to preserve: `"3"` → 3; `undefined`, `""`, `"abc"`, `"0"`, `"-2"` → 1. New behavior: `"1.5"` → 1 (previously 1.5, which worked by accident), `"Infinity"` → 1, and huge integers such as `"99999"` or `"1e21"` (an integer in JavaScript) → 10000, which Prisma accepts.
 
 **Verify**: `npm run typecheck` → exit 0.
 
@@ -102,7 +102,7 @@ const page = pageNumber(params.pagina);
 
 Keep import ordering consistent with the file (alphabetical by module path, as in the existing imports).
 
-**Verify**: `grep -rn "Number(params.pagina)" src` → no matches. `npm run typecheck && npm run lint` → exit 0.
+**Verify**: `grep -rn "[^e]Number(params.pagina)" src` → no matches. `npm run typecheck && npm run lint` → exit 0.
 
 ### Step 3: Tests
 
@@ -112,8 +112,9 @@ Add to `describe("filtros", ...)` in `tests/core.test.ts` (and add `pageNumber` 
   it("limita a página pedida a um inteiro seguro", () => {
     expect(pageNumber("3")).toBe(3);
     expect(pageNumber(undefined)).toBe(1);
-    for (const bad of ["", "abc", "0", "-2", "1.5", "1e21", "Infinity", "NaN"]) expect(pageNumber(bad)).toBe(1);
-    expect(pageNumber("99999")).toBe(10_000);
+    for (const bad of ["", "abc", "0", "-2", "1.5", "Infinity", "NaN"]) expect(pageNumber(bad)).toBe(1);
+    // Inteiros enormes (a causa do erro do `skip`) ficam no limite.
+    for (const huge of ["99999", "1e21"]) expect(pageNumber(huge)).toBe(10_000);
   });
 ```
 
@@ -130,7 +131,7 @@ ALL must hold:
 - [ ] `npm run typecheck` exits 0
 - [ ] `npm run lint` exits 0
 - [ ] `npm test` exits 0, with one more test than before
-- [ ] `grep -rn "Number(params.pagina)" src` returns no matches
+- [ ] `grep -rn "[^e]Number(params.pagina)" src` returns no matches (a bare `grep "Number(params.pagina)"` also matches `pageNumber(params.pagina)`)
 - [ ] `git status` shows only the in-scope files modified (plus the pre-existing `src/lib/incidents.ts`, which you did not touch)
 - [ ] `plans/README.md` status row updated
 

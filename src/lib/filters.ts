@@ -4,6 +4,15 @@ import { searchKey } from "./search";
 
 export type SearchParams = Record<string, string | undefined>;
 
+/** Limite de `?pagina=`: muito além de qualquer lista real, e seguro para o `skip` do Prisma. */
+const MAX_PAGE = 10_000;
+
+/** Página pedida na ligação: um inteiro entre 1 e MAX_PAGE. Qualquer outro valor (texto, decimal, infinito) passa a 1. */
+export function pageNumber(value: string | undefined): number {
+  const page = Number(value);
+  return Number.isInteger(page) && page >= 1 ? Math.min(page, MAX_PAGE) : 1;
+}
+
 /** Só decisões com, pelo menos, uma fonte oficial chegam às páginas públicas. */
 export const SOURCED_DECISION = { sources: { some: { official: true } } } as const;
 

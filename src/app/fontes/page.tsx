@@ -6,7 +6,7 @@ import { IncidentSources } from "@/components/IncidentSources";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
-import { queryString } from "@/lib/filters";
+import { pageNumber, queryString } from "@/lib/filters";
 import { searchKey } from "@/lib/search";
 import { formatNumber } from "@/lib/format";
 import { SOURCE_TYPE_LABEL } from "@/lib/sources";
@@ -19,7 +19,7 @@ const PAGE_SIZE = 30;
 export default async function FontesPage({ searchParams }: { searchParams: Promise<{ tipo?: string; pagina?: string; q?: string }> }) {
   const params = await searchParams;
   const type = params.tipo && params.tipo in SOURCE_TYPE_LABEL ? (params.tipo as SourceType) : undefined;
-  const page = Math.max(1, Number(params.pagina) || 1);
+  const page = pageNumber(params.pagina);
   const q = params.q?.trim() ?? "";
   const key = searchKey(q);
   const where = { type, searchText: key ? { contains: key } : undefined };

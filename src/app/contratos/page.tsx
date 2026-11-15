@@ -7,7 +7,7 @@ import { CsvLink, KindLabel, LastUpdated, PageHead, pageSections } from "@/compo
 import { Receipt } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import { AWARDING_ENTITIES } from "@/lib/entities";
-import { contractOrder, contractWhere, queryString, type SearchParams } from "@/lib/filters";
+import { contractOrder, contractWhere, pageNumber, queryString, type SearchParams } from "@/lib/filters";
 import { formatEur, formatNumber } from "@/lib/format";
 import { summaryMap } from "@/lib/summary-data";
 
@@ -31,7 +31,7 @@ const PORTALS = [
 
 export default async function ContratosPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
-  const page = Math.max(1, Number(params.pagina) || 1);
+  const page = pageNumber(params.pagina);
   const where = contractWhere(params);
 
   const [contracts, stats, procedures, suppliers, cpvs, allProcedures, tenders, years] = await Promise.all([

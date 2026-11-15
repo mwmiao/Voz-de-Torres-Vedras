@@ -12,7 +12,7 @@ Audit scope: standard depth, hotspot-weighted, done directly without subagents. 
 | 002  | Browser smoke test for the Segurança map, in CI | P1 | M | — | DONE |
 | 003  | Content-Security-Policy that keeps the map working | P2 | M | 002 | DONE |
 | 004  | Split `ingestion/sources/index.ts` by domain | P3 | M | — | DONE |
-| 005  | Make `?pagina=` safe with one shared parser | P1 | S | — | TODO |
+| 005  | Make `?pagina=` safe with one shared parser | P1 | S | — | DONE |
 | 006  | Add Dependabot for npm, Actions and Docker | P2 | S | — | TODO |
 | 007  | Cap the length of search terms in one helper | P3 | S | 005 | TODO |
 

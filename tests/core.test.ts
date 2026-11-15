@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toCsv } from "@/lib/csv";
-import { contractOrder, decisionWhere, queryString } from "@/lib/filters";
+import { contractOrder, decisionWhere, pageNumber, queryString } from "@/lib/filters";
 import { formatEur, voteSummary } from "@/lib/format";
 import { isPersonNif, normalizeBaseRecord, parseDate } from "@/lib/import/base";
 import { parseRows, slugify, validateBudgetRows, validateDecisionRows } from "@/lib/import/records";
@@ -176,6 +176,14 @@ describe("filtros", () => {
 
   it("ordena contratos por valor", () => {
     expect(contractOrder({ ordem: "valor" })).toEqual({ priceEur: "desc" });
+  });
+
+  it("limita a página pedida a um inteiro seguro", () => {
+    expect(pageNumber("3")).toBe(3);
+    expect(pageNumber(undefined)).toBe(1);
+    for (const bad of ["", "abc", "0", "-2", "1.5", "Infinity", "NaN"]) expect(pageNumber(bad)).toBe(1);
+    // Inteiros enormes (a causa do erro do `skip`) ficam no limite.
+    for (const huge of ["99999", "1e21"]) expect(pageNumber(huge)).toBe(10_000);
   });
 
   it("omite parâmetros vazios", () => {

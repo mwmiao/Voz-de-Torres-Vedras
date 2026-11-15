@@ -4,7 +4,7 @@ import { AlertCard, Disclosure, EmptyState, ExternalLink, FilterPanel, Paginatio
 import { CsvLink, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { activeAlertWhere, ALERT_TYPE_LABEL, expiredAlertWhere, FREGUESIAS, groupAlerts, SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/alerts";
 import { db } from "@/lib/db";
-import { queryString, type SearchParams } from "@/lib/filters";
+import { pageNumber, queryString, type SearchParams } from "@/lib/filters";
 import { searchKey } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +45,7 @@ function alertWhere(params: SearchParams): Prisma.AlertWhereInput {
 export default async function AlertasPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const now = new Date();
-  const page = Math.max(1, Number(params.pagina) || 1);
+  const page = pageNumber(params.pagina);
   const where = alertWhere(params);
   const [active, archive, archiveTotal, checked] = await Promise.all([
     db.alert.findMany({ where: { AND: [where, activeAlertWhere(now)] }, orderBy: [{ startsAt: "desc" }] }),

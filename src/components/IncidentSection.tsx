@@ -46,7 +46,7 @@ const POLICY = [
 export async function IncidentSection({ id, params }: { id: string; params: SearchParams }) {
   const now = new Date();
   const range = clampRange(now, params.de, params.ate);
-  // Margem de um dia: o corte exato faz-se pelo dia civil de Lisboa.
+  // Início da janela com uma hora de margem para a hora de verão: o corte exato faz-se pelo dia civil de Lisboa.
   const since = windowStart(now);
   const olderWhere = olderIncidentWhere(now);
   const [rows, olderThanWindow, older, archivedRecent, held, lastRun] = await Promise.all([

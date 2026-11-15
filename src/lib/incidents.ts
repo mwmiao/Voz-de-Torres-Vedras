@@ -245,14 +245,17 @@ export function filterIncidents<T extends Filterable>(incidents: T[], filters: P
   );
 }
 
+/** Ocorrências que podem aparecer em público: nem arquivadas nem retidas para revisão. O mesmo critério que visibilityProblem explica, ocorrência a ocorrência. */
+const PUBLISHABLE = { archivedAt: null, heldForReview: false } as const;
+
 /**
- * Consulta das ocorrências públicas: não arquivadas, não retidas e desde o início da janela, com margem.
+ * Consulta das ocorrências públicas: publicáveis e desde o início da janela, com margem.
  * O corte exato, pelo dia civil de Lisboa, faz-se depois com visibilityProblem.
  */
-export const publicIncidentWhere = (now: Date): Prisma.IncidentWhereInput => ({ archivedAt: null, heldForReview: false, incidentStart: { gte: windowStart(now) } });
+export const publicIncidentWhere = (now: Date): Prisma.IncidentWhereInput => ({ ...PUBLISHABLE, incidentStart: { gte: windowStart(now) } });
 
-/** Ocorrências que já saíram da janela de 14 dias: fora do mapa, mas ainda não arquivadas nem retidas. */
-export const olderIncidentWhere = (now: Date): Prisma.IncidentWhereInput => ({ archivedAt: null, heldForReview: false, incidentStart: { lt: new Date(`${windowStartDay(now)}T00:00:00Z`) } });
+/** Ocorrências publicáveis que já saíram da janela de 14 dias: fora do mapa, mas ainda não arquivadas. */
+export const olderIncidentWhere = (now: Date): Prisma.IncidentWhereInput => ({ ...PUBLISHABLE, incidentStart: { lt: new Date(`${windowStartDay(now)}T00:00:00Z`) } });
 
 /** Porque é que uma ocorrência não aparece no mapa, ou nulo se aparece. */
 export function visibilityProblem(incident: { archivedAt: Date | null; archiveReason: string | null; heldForReview: boolean; reviewReasons: string; incidentStart: Date }, at: Date): string | null {

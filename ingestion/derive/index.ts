@@ -36,7 +36,6 @@ async function scrubPersonSuppliers(db: PrismaClient): Promise<number> {
     }),
   );
   for (let start = 0; start < writes.length; start += WRITE_BATCH) await db.$transaction(writes.slice(start, start + WRITE_BATCH));
-  await db.$executeRawUnsafe(`UPDATE "Contract" SET "supplierName" = replace("supplierName", '&amp;', '&') WHERE "supplierName" LIKE '%&amp;%'`);
   return writes.length;
 }
 

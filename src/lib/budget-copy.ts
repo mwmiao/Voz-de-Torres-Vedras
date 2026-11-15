@@ -27,3 +27,21 @@ export function budgetOverview({ summary, year, facts, asOf }: { summary: Fact[]
   if (cash && asOf) lines.push(`A ${formatDate(asOf)}, o Município tinha ${million(amountOf(cash))} em caixa e contas bancárias.`);
   return lines;
 }
+
+/** Contexto geral escrito por esta plataforma, não retirado dos documentos. */
+export const GLOSSARY = [
+  { term: "SMAS", text: "Serviços Municipalizados de Água e Saneamento. Têm orçamento próprio, aprovado em conjunto com o da Câmara." },
+  { term: "Despesas de capital", text: "Investimento: obras, edifícios, equipamentos e terrenos. O resto é despesa corrente, como salários, energia e serviços." },
+  { term: "Saldo de gerência", text: "Dinheiro que sobrou do ano anterior e que é somado ao orçamento do ano em curso, numa revisão orçamental." },
+  { term: "Revisão orçamental", text: "Alteração ao orçamento durante o ano, aprovada pela Assembleia Municipal." },
+  { term: "Disponibilidades", text: "Dinheiro em caixa e em contas bancárias numa certa data." },
+  { term: "Dívida de médio e longo prazo", text: "Empréstimos e locações a pagar em mais de um ano." },
+  { term: "Limite da dívida total", text: "Valor máximo de dívida que a lei permite ao Município, calculado a partir da receita dos últimos anos." },
+];
+
+export const PORTALS = [
+  { label: "Documentos de gestão da Câmara Municipal", url: "https://www.cm-tvedras.pt/documentos/gestao/" },
+  { label: "Transparência no site da Câmara", url: "https://www.cm-tvedras.pt/transparencia" },
+  { label: "Portal da Transparência", url: "https://transparencia.gov.pt/" },
+  { label: "Diário da República", url: "https://diariodarepublica.pt/" },
+];

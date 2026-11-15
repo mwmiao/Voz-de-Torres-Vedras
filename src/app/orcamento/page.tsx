@@ -3,9 +3,10 @@ import Link from "next/link";
 import { Bars } from "@/components/Bars";
 import { BudgetFigure } from "@/components/BudgetFigure";
 import { CsvLink, KindLabel, LastUpdated, PageHead, pageSections } from "@/components/labels";
-import { Disclosure, ExternalLink, ScrollTable } from "@/components/civic";
+import { Disclosure, ExternalLink } from "@/components/civic";
 import { SourceChips } from "@/components/Receipts";
-import { budgetOverview } from "@/lib/budget-copy";
+import { StackedTable } from "@/components/StackedTable";
+import { budgetOverview, GLOSSARY, PORTALS } from "@/lib/budget-copy";
 import { groupBudgetDocs } from "@/lib/budget-docs";
 import { amountOf, budgetYear, cashHistory, latestFinancialFacts } from "@/lib/budget-facts";
 import { db } from "@/lib/db";
@@ -13,24 +14,6 @@ import { formatDate, formatEur } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Orçamento", description: "Orçamento, despesa e situação financeira do Município de Torres Vedras, com fontes oficiais." };
-
-/** Contexto geral escrito por esta plataforma, não retirado dos documentos. */
-const GLOSSARY = [
-  { term: "SMAS", text: "Serviços Municipalizados de Água e Saneamento. Têm orçamento próprio, aprovado em conjunto com o da Câmara." },
-  { term: "Despesas de capital", text: "Investimento: obras, edifícios, equipamentos e terrenos. O resto é despesa corrente, como salários, energia e serviços." },
-  { term: "Saldo de gerência", text: "Dinheiro que sobrou do ano anterior e que é somado ao orçamento do ano em curso, numa revisão orçamental." },
-  { term: "Revisão orçamental", text: "Alteração ao orçamento durante o ano, aprovada pela Assembleia Municipal." },
-  { term: "Disponibilidades", text: "Dinheiro em caixa e em contas bancárias numa certa data." },
-  { term: "Dívida de médio e longo prazo", text: "Empréstimos e locações a pagar em mais de um ano." },
-  { term: "Limite da dívida total", text: "Valor máximo de dívida que a lei permite ao Município, calculado a partir da receita dos últimos anos." },
-];
-
-const PORTALS = [
-  { label: "Documentos de gestão da Câmara Municipal", url: "https://www.cm-tvedras.pt/documentos/gestao/" },
-  { label: "Transparência no site da Câmara", url: "https://www.cm-tvedras.pt/transparencia" },
-  { label: "Portal da Transparência", url: "https://transparencia.gov.pt/" },
-  { label: "Diário da República", url: "https://diariodarepublica.pt/" },
-];
 
 export default async function OrcamentoPage() {
   const [entries, docs] = await Promise.all([
@@ -97,29 +80,17 @@ export default async function OrcamentoPage() {
           </div>
           <div className="mt-4">
           <Disclosure summary="Ver cada valor e a sua fonte">
-          <ScrollTable label="Valores orçamentais e respetivas fontes">
-            <table className="w-full min-w-[40rem] text-left text-sm">
-              <caption className="sr-only">Valores orçamentais e respetivas fontes</caption>
-              <thead className="bg-paper text-xs text-muted">
-                <tr>
-                  <th scope="col" className="px-3 py-2">Designação</th>
-                  <th scope="col" className="px-3 py-2 text-right">Valor</th>
-                  <th scope="col" className="px-3 py-2">Referência</th>
-                  <th scope="col" className="px-3 py-2">Fonte</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...spending, ...revenue].map((entry) => (
-                  <tr key={entry.id} className="border-t border-line align-top">
-                    <td className="px-3 py-2">{entry.label}{entry.note ? <span className="block text-xs text-muted">{entry.note}</span> : null}<LastUpdated date={entry.updatedAt} /></td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{amount(entry)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted">{entry.asOf ? formatDate(entry.asOf) : "—"}</td>
-                    <td className="px-3 py-2"><SourceChips sources={entry.sources} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollTable>
+          <StackedTable
+            caption="Valores orçamentais e respetivas fontes"
+            rows={[...spending, ...revenue]}
+            rowKey={(entry) => entry.id}
+            columns={[
+              { label: "Designação", className: "md:w-[34%]", cell: (entry) => <>{entry.label}{entry.note ? <span className="block text-xs text-muted">{entry.note}</span> : null}<LastUpdated date={entry.updatedAt} /></> },
+              { label: "Valor", right: true, gap: 1, className: "whitespace-nowrap tabular-nums", cell: (entry) => amount(entry) },
+              { label: "Referência", gap: 1, className: "whitespace-nowrap text-muted", cell: (entry) => (entry.asOf ? formatDate(entry.asOf) : "—") },
+              { label: "Fonte", gap: 2, cell: (entry) => <SourceChips sources={entry.sources} /> },
+            ]}
+          />
           </Disclosure>
           </div>
         </section>

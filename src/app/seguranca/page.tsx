@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { queryString, type SearchParams } from "@/lib/filters";
 import { formatDate, formatNumber } from "@/lib/format";
 import { CRIME_DISCLAIMER, CRIME_LIMITATIONS, formatRate, panorama, rateOf } from "@/lib/safety";
-import { searchKey } from "@/lib/search";
+import { searchKey, searchTerm } from "@/lib/search";
 import { compareValues } from "@/lib/trends";
 
 export const dynamic = "force-dynamic";
@@ -75,7 +75,7 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
   });
 
   // Vista detalhada
-  const q = searchKey(params.q).trim();
+  const q = searchTerm(params.q);
   const filteredYear = /^\d{4}$/.test(params.ano ?? "") ? Number(params.ano) : undefined;
   const where: Prisma.CrimeRecordWhereInput = { year: filteredYear, categoryCode: params.categoria || undefined, sourceUrl: params.fonte || undefined };
   const rows = detailed

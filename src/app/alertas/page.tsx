@@ -5,7 +5,7 @@ import { CsvLink, LastUpdated, PageHead, pageSections } from "@/components/label
 import { activeAlertWhere, ALERT_TYPE_LABEL, expiredAlertWhere, FREGUESIAS, groupAlerts, SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/alerts";
 import { db } from "@/lib/db";
 import { pageNumber, queryString, type SearchParams } from "@/lib/filters";
-import { searchKey } from "@/lib/search";
+import { searchTerm } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Alertas", description: "Avisos oficiais para Torres Vedras: tempo, água, trânsito, proteção civil e serviços municipais." };
@@ -28,7 +28,7 @@ const SEVERITY_HELP: Record<AlertSeverity, string> = {
 };
 
 function alertWhere(params: SearchParams): Prisma.AlertWhereInput {
-  const q = searchKey(params.q).trim();
+  const q = searchTerm(params.q);
   const type = params.tipo && params.tipo in ALERT_TYPE_LABEL ? (params.tipo as AlertType) : undefined;
   const severity = params.gravidade && params.gravidade in SEVERITY_LABEL ? (params.gravidade as AlertSeverity) : undefined;
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.data ?? "") ? new Date(`${params.data}T23:59:59Z`) : undefined;

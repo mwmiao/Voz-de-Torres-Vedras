@@ -6,7 +6,7 @@ import { CsvLink, PageHead } from "@/components/labels";
 import { db } from "@/lib/db";
 import { pageNumber, queryString, type SearchParams } from "@/lib/filters";
 import { formatNumber } from "@/lib/format";
-import { searchKey } from "@/lib/search";
+import { searchTerm } from "@/lib/search";
 import { SUMMARY_TYPE_LABEL } from "@/lib/summaries";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ const PAGE_SIZE = 12;
 export default async function ResumosPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const page = pageNumber(params.pagina);
-  const q = searchKey(params.q).trim();
+  const q = searchTerm(params.q);
   const entityType = params.tipo && params.tipo in SUMMARY_TYPE_LABEL ? params.tipo : undefined;
   const where: Prisma.SummaryWhereInput = {
     entityType,

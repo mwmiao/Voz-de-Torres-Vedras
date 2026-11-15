@@ -5,14 +5,14 @@ import { KindLabel, LastUpdated, PageHead, pageSections } from "@/components/lab
 import { SourceChips } from "@/components/Receipts";
 import { db } from "@/lib/db";
 import type { SearchParams } from "@/lib/filters";
-import { searchKey } from "@/lib/search";
+import { searchKey, searchTerm } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Eleitos", description: "Diretório neutro de eleitos municipais de Torres Vedras, com cargos, pelouros e comissões." };
 
 export default async function CamaraPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
-  const q = searchKey(params.q).trim();
+  const q = searchTerm(params.q);
   const [allOfficials, allCommittees] = await Promise.all([
     db.official.findMany({ where: { active: true }, include: { sources: true }, orderBy: [{ order: "asc" }, { name: "asc" }] }),
     db.committee.findMany({

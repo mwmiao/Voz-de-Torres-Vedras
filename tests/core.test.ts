@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { toCsv } from "@/lib/csv";
-import { contractOrder, decisionWhere, pageNumber, queryString } from "@/lib/filters";
+import { contractOrder, contractWhere, decisionWhere, pageNumber, queryString } from "@/lib/filters";
 import { formatEur, voteSummary } from "@/lib/format";
 import { isPersonNif, normalizeBaseRecord, parseDate } from "@/lib/import/base";
 import { parseRows, slugify, validateBudgetRows, validateDecisionRows } from "@/lib/import/records";
 import { isAllowedByRobots } from "@/lib/robots";
-import { searchKey } from "@/lib/search";
+import { MAX_SEARCH_LENGTH, searchKey, searchTerm } from "@/lib/search";
 import { isOfficialUrl, isVerified } from "@/lib/sources";
 
 describe("fontes", () => {
@@ -167,6 +167,19 @@ describe("filtros", () => {
   it("pesquisa sem depender de acentos nem de maiúsculas", () => {
     expect(decisionWhere({ q: "Moção" }).searchText).toEqual({ contains: "mocao" });
     expect(searchKey("Proteção CIVIL")).toBe("protecao civil");
+  });
+
+  it("limita o termo de pesquisa", () => {
+    expect(searchTerm("  Moção  ")).toBe("mocao");
+    expect(searchTerm(undefined)).toBe("");
+    expect(searchTerm("a".repeat(MAX_SEARCH_LENGTH + 50))).toHaveLength(MAX_SEARCH_LENGTH);
+    expect(searchTerm(`${"a".repeat(MAX_SEARCH_LENGTH - 1)} bbb`)).toBe("a".repeat(MAX_SEARCH_LENGTH - 1));
+  });
+
+  it("aplica o limite nas consultas de decisões e contratos", () => {
+    const long = "x".repeat(500);
+    expect(decisionWhere({ q: long }).searchText).toEqual({ contains: "x".repeat(MAX_SEARCH_LENGTH) });
+    expect(contractWhere({ q: long }).searchText).toEqual({ contains: "x".repeat(MAX_SEARCH_LENGTH) });
   });
 
   it("filtra por ano", () => {

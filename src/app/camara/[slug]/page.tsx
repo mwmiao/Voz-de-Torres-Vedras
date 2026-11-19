@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt, SourceChips } from "@/components/Receipts";
-import { db } from "@/lib/db";
 import { BODY_LABEL, formatDateShort } from "@/lib/format";
+import { findOfficial, findOfficialMeta } from "@/lib/queries/officials";
 
 export const dynamic = "force-dynamic";
 
@@ -13,19 +13,12 @@ const CHOICE = { FAVOR: "A favor", CONTRA: "Contra", ABSTENCAO: "Abstenção" };
 type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const official = await db.official.findUnique({ where: { slug: (await params).slug }, select: { name: true, role: true } });
+  const official = await findOfficialMeta((await params).slug);
   return official ? { title: official.name, description: `${official.role}, Torres Vedras.` } : {};
 }
 
 export default async function OfficialPage({ params }: Props) {
-  const official = await db.official.findUnique({
-    where: { slug: (await params).slug },
-    include: {
-      sources: true,
-      memberships: { include: { committee: true } },
-      votes: { include: { decision: { include: { meeting: true, sources: { where: { official: true } } } } } },
-    },
-  });
+  const official = await findOfficial((await params).slug);
   if (!official) notFound();
   const portfolios = official.portfolios as string[];
 

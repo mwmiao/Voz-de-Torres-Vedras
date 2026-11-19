@@ -3,7 +3,6 @@ import { IncidentCard } from "@/components/IncidentCard";
 import { IncidentExplorer } from "@/components/IncidentExplorer";
 import { CsvLink } from "@/components/labels";
 import { FREGUESIAS } from "@/lib/alerts";
-import { db } from "@/lib/db";
 import type { SearchParams } from "@/lib/filters";
 import { formatDateTime } from "@/lib/format";
 import { formatLongDay } from "@/lib/incident-format";
@@ -13,8 +12,6 @@ import {
   clampRange,
   INCIDENT_CATEGORIES,
   METHOD_INTRO,
-  olderIncidentWhere,
-  publicIncidentWhere,
   REVIEW_DEFAULTS,
   SOURCE_TIER_LABEL,
   VERIFICATION_HELP,
@@ -25,6 +22,7 @@ import {
   windowStart,
 } from "@/lib/incidents";
 import { toPublicIncident } from "@/lib/public-incident";
+import { countArchivedSince, countHeldSince, countOlderIncidents, findLastIncidentRun, listOlderIncidents, listPublicIncidents } from "@/lib/queries/incidents";
 
 const INCIDENT_SOURCES = SOURCE_CATALOG.filter((source) => source.group === "ocorrencias").map((source) => source.id);
 
@@ -48,14 +46,13 @@ export async function IncidentSection({ id, params }: { id: string; params: Sear
   const range = clampRange(now, params.de, params.ate);
   // Início da janela com uma hora de margem para a hora de verão: o corte exato faz-se pelo dia civil de Lisboa.
   const since = windowStart(now);
-  const olderWhere = olderIncidentWhere(now);
   const [rows, olderThanWindow, older, archivedRecent, held, lastRun] = await Promise.all([
-    db.incident.findMany({ where: publicIncidentWhere(now), include: { references: true }, orderBy: [{ incidentStart: "desc" }, { publicationDate: "desc" }] }),
-    db.incident.count({ where: olderWhere }),
-    db.incident.findMany({ where: olderWhere, include: { references: true }, orderBy: { incidentStart: "desc" }, take: OLDER_SHOWN }),
-    db.incident.count({ where: { archivedAt: { not: null }, incidentStart: { gte: since } } }),
-    db.incident.count({ where: { archivedAt: null, heldForReview: true, incidentStart: { gte: since } } }),
-    db.dataUpdateLog.findFirst({ where: { sourceId: { in: INCIDENT_SOURCES }, status: { not: "ERRO" } }, orderBy: { retrievalDate: "desc" } }),
+    listPublicIncidents(now),
+    countOlderIncidents(now),
+    listOlderIncidents(now, OLDER_SHOWN),
+    countArchivedSince(since),
+    countHeldSince(since),
+    findLastIncidentRun(INCIDENT_SOURCES),
   ]);
 
   const incidents = rows.filter((row) => !visibilityProblem(row, now)).map(toPublicIncident);

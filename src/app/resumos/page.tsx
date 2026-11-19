@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { EmptyState, FilterPanel, Pagination, SummaryBlock } from "@/components/civic";
 import { CsvLink, PageHead } from "@/components/labels";
-import { db } from "@/lib/db";
 import { pageNumber, queryString, type SearchParams } from "@/lib/filters";
 import { formatNumber } from "@/lib/format";
+import { countSummaries, countSummariesByType, listSummaries } from "@/lib/queries/summaries";
 import { searchTerm } from "@/lib/search";
 import { SUMMARY_TYPE_LABEL } from "@/lib/summaries";
 
@@ -25,9 +25,9 @@ export default async function ResumosPage({ searchParams }: { searchParams: Prom
     searchText: q ? { contains: q } : undefined,
   };
   const [summaries, total, byType] = await Promise.all([
-    db.summary.findMany({ where, orderBy: [{ date: { sort: "desc", nulls: "last" } }, { title: "asc" }], skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
-    db.summary.count({ where }),
-    db.summary.groupBy({ by: ["entityType"], where: { ...where, entityType: undefined }, _count: { _all: true }, orderBy: { _count: { entityType: "desc" } } }),
+    listSummaries(where, page, PAGE_SIZE),
+    countSummaries(where),
+    countSummariesByType(where),
   ]);
   const filters = { ...params, pagina: undefined };
   const allTypes = byType.reduce((sum, row) => sum + row._count._all, 0);

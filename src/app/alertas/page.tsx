@@ -2,9 +2,9 @@ import type { AlertSeverity, AlertType, Prisma } from "@prisma/client";
 import type { Metadata } from "next";
 import { AlertCard, Disclosure, EmptyState, ExternalLink, FilterPanel, Pagination, SectionHead } from "@/components/civic";
 import { CsvLink, LastUpdated, PageHead, pageSections } from "@/components/labels";
-import { activeAlertWhere, ALERT_TYPE_LABEL, expiredAlertWhere, FREGUESIAS, groupAlerts, SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/alerts";
-import { db } from "@/lib/db";
+import { ALERT_TYPE_LABEL, FREGUESIAS, groupAlerts, SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/alerts";
 import { pageNumber, queryString, type SearchParams } from "@/lib/filters";
+import { countExpiredAlerts, lastAlertCheck, listActiveAlerts, listExpiredAlerts } from "@/lib/queries/alerts";
 import { searchTerm } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
@@ -48,10 +48,10 @@ export default async function AlertasPage({ searchParams }: { searchParams: Prom
   const page = pageNumber(params.pagina);
   const where = alertWhere(params);
   const [active, archive, archiveTotal, checked] = await Promise.all([
-    db.alert.findMany({ where: { AND: [where, activeAlertWhere(now)] }, orderBy: [{ startsAt: "desc" }] }),
-    db.alert.findMany({ where: { AND: [where, expiredAlertWhere(now)] }, orderBy: { endsAt: "desc" }, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
-    db.alert.count({ where: { AND: [where, expiredAlertWhere(now)] } }),
-    db.alert.aggregate({ _max: { lastCheckedAt: true } }),
+    listActiveAlerts(now, where),
+    listExpiredAlerts(now, where, page, PAGE_SIZE),
+    countExpiredAlerts(now, where),
+    lastAlertCheck(),
   ]);
   const ordered = groupAlerts([...active].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)));
   const archived = groupAlerts(archive);

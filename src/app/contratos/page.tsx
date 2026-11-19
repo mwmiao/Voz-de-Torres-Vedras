@@ -5,10 +5,11 @@ import { ContractList } from "@/components/ContractList";
 import { EmptyState, FilterPanel, MetricCard, Pagination, SectionHead } from "@/components/civic";
 import { CsvLink, KindLabel, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { Receipt } from "@/components/Receipts";
-import { db } from "@/lib/db";
 import { AWARDING_ENTITIES } from "@/lib/entities";
 import { contractOrder, contractWhere, pageNumber, queryString, type SearchParams } from "@/lib/filters";
 import { formatEur, formatNumber } from "@/lib/format";
+import { contractsByProcedure, contractStats, listContractSignedDates, listContracts, listProcedureTypes, topContractCpvs, topContractSuppliers } from "@/lib/queries/contracts";
+import { listRecentTenders } from "@/lib/queries/sources";
 import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";
@@ -35,20 +36,14 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
   const where = contractWhere(params);
 
   const [contracts, stats, procedures, suppliers, cpvs, allProcedures, tenders, years] = await Promise.all([
-    db.contract.findMany({
-      where,
-      include: { sources: true, modifications: { orderBy: { date: "desc" } } },
-      orderBy: contractOrder(params),
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-    db.contract.aggregate({ where, _count: { _all: true }, _sum: { priceEur: true }, _max: { updatedAt: true } }),
-    db.contract.groupBy({ by: ["procedureType"], where, _sum: { priceEur: true }, _count: { _all: true }, orderBy: { _sum: { priceEur: "desc" } } }),
-    db.contract.groupBy({ by: ["supplierName"], where: { ...where, supplierIsPerson: false }, _sum: { priceEur: true }, _count: { _all: true }, orderBy: { _sum: { priceEur: "desc" } }, take: 6 }),
-    db.contract.groupBy({ by: ["cpvLabel"], where: { ...where, cpvLabel: { not: null } }, _sum: { priceEur: true }, orderBy: { _sum: { priceEur: "desc" } }, take: 6 }),
-    db.contract.findMany({ distinct: ["procedureType"], select: { procedureType: true }, orderBy: { procedureType: "asc" } }),
-    db.source.findMany({ where: { type: "CONCURSO", official: true }, orderBy: { publishedAt: { sort: "desc", nulls: "last" } }, take: 8 }),
-    db.contract.findMany({ select: { signedAt: true } }),
+    listContracts(where, contractOrder(params), page, PAGE_SIZE),
+    contractStats(where),
+    contractsByProcedure(where),
+    topContractSuppliers(where),
+    topContractCpvs(where),
+    listProcedureTypes(),
+    listRecentTenders(),
+    listContractSignedDates(),
   ]);
 
   const count = stats._count._all;

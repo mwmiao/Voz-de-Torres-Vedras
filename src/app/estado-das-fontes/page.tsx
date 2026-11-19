@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PageHead } from "@/components/labels";
-import { db } from "@/lib/db";
+import { countRecordsBySource, listDataSourceStates } from "@/lib/queries/sources";
 import { formatDate, formatNumber, formatTime, RUN_STATUS_LABEL } from "@/lib/format";
 import { SOURCE_TIER_NUMBER } from "@/lib/incidents";
 import { SOURCE_CATALOG, SOURCE_STATUS_LABEL, sourceStatus, type FetchMethod } from "@/lib/source-catalog";
@@ -23,17 +23,9 @@ function frequency(hours: number): string {
 }
 
 export default async function EstadoDasFontesPage() {
-  const [states, sources, contracts, meetings, officials, budget, decisions, modifications, incidents, references] = await Promise.all([
-    db.dataSourceState.findMany(),
-    db.source.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
-    db.contract.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
-    db.meeting.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
-    db.official.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
-    db.budgetEntry.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
-    db.decision.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
-    db.contractModification.groupBy({ by: ["dataSourceId"], _count: { _all: true } }),
-    db.incident.groupBy({ by: ["sourceId"], _count: { _all: true } }),
-    db.incidentReference.groupBy({ by: ["sourceId"], _count: { _all: true } }),
+  const [states, [sources, contracts, meetings, officials, budget, decisions, modifications, incidents, references]] = await Promise.all([
+    listDataSourceStates(),
+    countRecordsBySource(),
   ]);
   const stateById = new Map(states.map((state) => [state.id, state]));
   const counts = new Map<string, number>();

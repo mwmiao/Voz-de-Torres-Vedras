@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Bars } from "@/components/Bars";
 import { Disclosure, EmptyState, ExternalLink, MetricCard, ScrollTable, SectionHead } from "@/components/civic";
 import { CsvLink, LastUpdated, PageHead, pageSections } from "@/components/labels";
-import { db } from "@/lib/db";
+import { listMetrics } from "@/lib/queries/metrics";
 import { formatEur, formatNumber, OUTCOME_LABEL } from "@/lib/format";
 import { latestMetric } from "@/lib/metrics";
 import { SOURCE_TYPE_LABEL } from "@/lib/sources";
@@ -28,7 +28,7 @@ function byDimension(rows: Metric[], period: string) {
 }
 
 export default async function MetricasPage() {
-  const metrics = await db.metric.findMany({ orderBy: [{ key: "asc" }, { period: "asc" }] });
+  const metrics = await listMetrics();
   const updated = metrics.reduce<Date | null>((latest, row) => (!latest || row.retrievalDate > latest ? row.retrievalDate : latest), null);
   const of = (key: string, dimension = "") => metrics.filter((row) => row.key === key && row.dimension === dimension);
   const allOf = (key: string) => metrics.filter((row) => row.key === key);

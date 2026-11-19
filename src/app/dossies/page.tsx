@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
-import { db } from "@/lib/db";
+import { listIssues } from "@/lib/queries/issues";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dossiês", description: "Assuntos municipais de Torres Vedras, com contexto neutro, datas e decisões relacionadas." };
 
 export default async function DossiesPage() {
-  const issues = await db.issue.findMany({
-    include: { _count: { select: { decisions: true, sources: true } } },
-    orderBy: [{ category: "asc" }, { title: "asc" }],
-  });
+  const issues = await listIssues();
   return (
     <>
       <PageHead title="Dossiês" kicker={<KindLabel kind="CONTEXTO_EDITORIAL" />}>

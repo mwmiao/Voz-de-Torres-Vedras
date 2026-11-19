@@ -1,17 +1,13 @@
 import { csvResponse, toCsv } from "@/lib/csv";
-import { db } from "@/lib/db";
 import { decisionOrder, decisionWhere, searchParamsObject } from "@/lib/filters";
 import { BODY_LABEL, OUTCOME_LABEL, voteSummary } from "@/lib/format";
+import { listDecisionsForExport } from "@/lib/queries/meetings";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const params = searchParamsObject(request.url);
-  const decisions = await db.decision.findMany({
-    where: decisionWhere(params),
-    include: { meeting: true, sources: { where: { official: true } } },
-    orderBy: decisionOrder(params),
-  });
+  const decisions = await listDecisionsForExport(decisionWhere(params), decisionOrder(params));
   const rows = decisions.map((decision) => [
     decision.meeting.date,
     BODY_LABEL[decision.meeting.body],

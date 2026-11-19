@@ -5,9 +5,9 @@ import { Bars } from "@/components/Bars";
 import { IncidentSection } from "@/components/IncidentSection";
 import { Disclosure, EmptyState, ExternalLink, MetricCard, ScrollTable, SectionHead, TrendText } from "@/components/civic";
 import { CsvLink, LastUpdated, PageHead, pageSections } from "@/components/labels";
-import { db } from "@/lib/db";
 import { queryString, type SearchParams } from "@/lib/filters";
 import { formatDate, formatNumber } from "@/lib/format";
+import { listCrimeCategories, listCrimeRecords, listFreguesias, listPopulationEstimates } from "@/lib/queries/crime";
 import { CRIME_DISCLAIMER, CRIME_LIMITATIONS, formatRate, panorama, rateOf } from "@/lib/safety";
 import { searchKey, searchTerm } from "@/lib/search";
 import { compareValues } from "@/lib/trends";
@@ -31,10 +31,10 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
   const params = await searchParams;
   const detailed = params.vista === "detalhada";
   const [records, categories, freguesias, population] = await Promise.all([
-    db.crimeRecord.findMany({ include: { category: true }, orderBy: [{ year: "desc" }, { category: { order: "asc" } }] }),
-    db.crimeCategory.findMany({ orderBy: { order: "asc" } }),
-    db.freguesia.findMany({ orderBy: { name: "asc" } }),
-    db.populationEstimate.findMany({ orderBy: { year: "desc" } }),
+    listCrimeRecords(),
+    listCrimeCategories(),
+    listFreguesias(),
+    listPopulationEstimates(),
   ]);
   const years = [...new Set(records.map((record) => record.year))].sort((a, b) => b - a);
   const latest = years[0];
@@ -79,7 +79,7 @@ export default async function SegurancaPage({ searchParams }: { searchParams: Pr
   const filteredYear = /^\d{4}$/.test(params.ano ?? "") ? Number(params.ano) : undefined;
   const where: Prisma.CrimeRecordWhereInput = { year: filteredYear, categoryCode: params.categoria || undefined, sourceUrl: params.fonte || undefined };
   const rows = detailed
-    ? (await db.crimeRecord.findMany({ where, include: { category: true }, orderBy: [{ year: "desc" }, { category: { order: "asc" } }] })).filter((row) => !q || searchKey(row.category.name).includes(q))
+    ? (await listCrimeRecords(where)).filter((row) => !q || searchKey(row.category.name).includes(q))
     : [];
   const sources = [...new Set(records.map((record) => record.sourceUrl))];
   const chartCode = params.categoria || "T";

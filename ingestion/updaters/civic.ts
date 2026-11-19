@@ -4,7 +4,7 @@ import { searchKey } from "@/lib/search";
 import { sha256 } from "../fetchers/http";
 import { CRIME_CATEGORIES, INE_INDICATOR_URL } from "../parsers/ine";
 import type { AlertRecord, CrimeRecordInput, PopulationRecord } from "../types";
-import { emit, type ApplyContext } from "./apply";
+import { emit, type ApplyContext } from "./context";
 
 const AREA = "Torres Vedras";
 

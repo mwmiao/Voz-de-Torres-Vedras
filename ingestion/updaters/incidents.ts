@@ -6,7 +6,7 @@ import { isUnofficial } from "@/lib/source-tiers";
 import { assessIncident, fingerprintSimilarity, isNearDuplicate, matchClaim, thresholdsFromEnv, type AssessInput, type Thresholds } from "@/lib/verification";
 import { sha256 } from "../fetchers/http";
 import type { IncidentPlace, IncidentRecord, IncidentRejection, IncidentRemoval } from "../types";
-import type { ApplyContext } from "./apply";
+import type { ApplyContext } from "./context";
 
 /** Registos feitos à mão prevalecem sobre a recolha automática da mesma publicação. */
 export const CURATED_INCIDENTS = "ocorrencias-curadas";

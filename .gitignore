@@ -19,3 +19,6 @@ coverage/
 .claude/
 test-results/
 playwright-report/
+
+# graphify knowledge graph output
+graphify-out/

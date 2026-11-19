@@ -1,4 +1,4 @@
-import type { MeetingStatus, Prisma, PrismaClient, UpdateCategory, UpdateStatus } from "@prisma/client";
+import type { MeetingStatus, Prisma, UpdateStatus } from "@prisma/client";
 import { slugify } from "@/lib/import/records";
 import { searchKey } from "@/lib/search";
 import { isOfficialUrl } from "@/lib/sources";
@@ -6,46 +6,10 @@ import { sha256 } from "../fetchers/http";
 import type { ContractRecord, DocumentRecord, FinanceRecord, IngestRecord, MeetingRecord, ModificationRecord, OfficialRecord } from "../types";
 import { applyAlert, applyCrime, applyPopulation } from "./civic";
 import { applyIncident, applyIncidentRejection, applyIncidentRemoval } from "./incidents";
-import { diffFields, type Change } from "./diff";
+import { emit, type ApplyContext } from "./context";
+import { diffFields } from "./diff";
 
-/** Na primeira execução, só o que é recente aparece como novidade: o resto é o arquivo existente. */
-const BASELINE_WINDOW_DAYS = 45;
-
-export type ApplyContext = {
-  db: PrismaClient;
-  sourceId: string;
-  runId: string;
-  now: Date;
-  baseline: boolean;
-};
-
-type EventInput = {
-  entityType: string;
-  entityKey: string;
-  status: UpdateStatus;
-  category: UpdateCategory;
-  title: string;
-  sourceUrl: string;
-  date?: Date | null;
-  changes?: Change[];
-};
-
-export async function emit(context: ApplyContext, event: EventInput) {
-  if (context.baseline) {
-    const limit = context.now.getTime() - BASELINE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-    if (event.status !== "NEW" || !event.date || event.date.getTime() < limit) return;
-  }
-  const { date, changes = [], ...fields } = event;
-  await context.db.updateEvent.create({
-    data: {
-      ...fields,
-      dataSourceId: context.sourceId,
-      runId: context.runId,
-      occurredAt: context.baseline && date ? date : context.now,
-      changes: { create: changes },
-    },
-  });
-}
+export type { ApplyContext };
 
 function documentHash(record: DocumentRecord): string {
   return sha256(JSON.stringify([record.title, record.docType, record.publishedAt?.toISOString() ?? null, record.data ?? null]));

@@ -1,16 +1,12 @@
 import { csvResponse, toCsv } from "@/lib/csv";
-import { db } from "@/lib/db";
 import { contractOrder, contractWhere, searchParamsObject } from "@/lib/filters";
+import { listContractsForExport } from "@/lib/queries/contracts";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const params = searchParamsObject(request.url);
-  const contracts = await db.contract.findMany({
-    where: contractWhere(params),
-    include: { sources: true },
-    orderBy: contractOrder(params),
-  });
+  const contracts = await listContractsForExport(contractWhere(params), contractOrder(params));
   const rows = contracts.map((contract) => [
     contract.signedAt,
     contract.title,

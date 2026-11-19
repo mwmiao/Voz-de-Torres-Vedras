@@ -5,8 +5,8 @@ import { EmptyState, Pagination } from "@/components/civic";
 import { IncidentSources } from "@/components/IncidentSources";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Receipt } from "@/components/Receipts";
-import { db } from "@/lib/db";
 import { pageNumber, queryString } from "@/lib/filters";
+import { countSources, countSourcesByType, latestSourceRetrieval, listSources } from "@/lib/queries/sources";
 import { searchTerm } from "@/lib/search";
 import { formatNumber } from "@/lib/format";
 import { SOURCE_TYPE_LABEL } from "@/lib/sources";
@@ -24,15 +24,10 @@ export default async function FontesPage({ searchParams }: { searchParams: Promi
   const key = searchTerm(q);
   const where = { type, searchText: key ? { contains: key } : undefined };
   const [sources, total, groups, updated] = await Promise.all([
-    db.source.findMany({
-      where,
-      orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { title: "asc" }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-    db.source.count({ where }),
-    db.source.groupBy({ by: ["type"], _count: { _all: true } }),
-    db.source.aggregate({ _max: { retrievedAt: true } }),
+    listSources(where, page, PAGE_SIZE),
+    countSources(where),
+    countSourcesByType(),
+    latestSourceRetrieval(),
   ]);
   const pageLink = (target: number) => `/fontes?${queryString({ tipo: type, q, pagina: String(target) })}`;
 

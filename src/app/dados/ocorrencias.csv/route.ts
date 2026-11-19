@@ -1,7 +1,7 @@
 import { FREGUESIAS } from "@/lib/alerts";
 import { csvResponse, toCsv } from "@/lib/csv";
-import { db } from "@/lib/db";
 import { INCIDENT_CATEGORY_LABEL, PHASE_LABEL, PRECISION_LABEL, SOURCE_TIER_LABEL, SOURCE_TIER_NUMBER, VERIFICATION_LABEL } from "@/lib/incidents";
+import { listIncidentsForExport } from "@/lib/queries/incidents";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ const NAMES = Object.fromEntries(FREGUESIAS.map((item) => [item.slug, item.name]
  * Registos retidos para revisão não saem, e ligações com dados pessoais também não.
  */
 export async function GET() {
-  const incidents = await db.incident.findMany({ where: { heldForReview: false }, include: { references: true }, orderBy: { incidentStart: "desc" } });
+  const incidents = await listIncidentsForExport();
   const list = (items: typeof incidents[number]["references"]) =>
     items.map((item) => `${item.sourceName} (nível ${SOURCE_TIER_NUMBER[item.sourceTier]}${item.duplicateOfUrl ? ", repetição" : ""})${item.linkPublic ? ` ${item.url}` : ""}`).join(" | ");
   return csvResponse(

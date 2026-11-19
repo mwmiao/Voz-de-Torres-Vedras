@@ -1,15 +1,14 @@
 import { csvResponse, toCsv } from "@/lib/csv";
-import { db } from "@/lib/db";
 import { searchParamsObject } from "@/lib/filters";
+import { listCrimeRecords } from "@/lib/queries/crime";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const params = searchParamsObject(request.url);
-  const records = await db.crimeRecord.findMany({
-    where: { year: /^\d{4}$/.test(params.ano ?? "") ? Number(params.ano) : undefined, categoryCode: params.categoria || undefined },
-    include: { category: true },
-    orderBy: [{ year: "desc" }, { category: { order: "asc" } }],
+  const records = await listCrimeRecords({
+    year: /^\d{4}$/.test(params.ano ?? "") ? Number(params.ano) : undefined,
+    categoryCode: params.categoria || undefined,
   });
   const decimal = (value: number | null) => (value === null ? "" : String(value).replace(".", ","));
   return csvResponse(

@@ -1,11 +1,11 @@
 import { csvResponse, toCsv } from "@/lib/csv";
-import { db } from "@/lib/db";
 import { BODY_LABEL } from "@/lib/format";
+import { listMeetingsForExport } from "@/lib/queries/meetings";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const meetings = await db.meeting.findMany({ include: { sources: true }, orderBy: { date: "desc" } });
+  const meetings = await listMeetingsForExport();
   const rows = meetings.map((meeting) => [
     meeting.date,
     BODY_LABEL[meeting.body],

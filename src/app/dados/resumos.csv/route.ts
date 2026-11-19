@@ -1,11 +1,11 @@
 import { csvResponse, toCsv } from "@/lib/csv";
-import { db } from "@/lib/db";
+import { listSummariesForExport } from "@/lib/queries/summaries";
 import { SUMMARY_UNAVAILABLE } from "@/lib/summaries";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const summaries = await db.summary.findMany({ orderBy: { date: { sort: "desc", nulls: "last" } } });
+  const summaries = await listSummariesForExport();
   return csvResponse(
     "resumos-torres-vedras.csv",
     toCsv(

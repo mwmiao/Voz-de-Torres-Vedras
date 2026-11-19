@@ -5,9 +5,9 @@ import { DecisionList } from "@/components/DecisionTable";
 import { CsvLink, KindLabel, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { Disclosure, EmptyState, FilterPanel, Pagination, SectionHead } from "@/components/civic";
 import { SourceChips } from "@/components/Receipts";
-import { db } from "@/lib/db";
 import { decisionOrder, decisionWhere, pageNumber, queryString, type SearchParams } from "@/lib/filters";
 import { BODY_LABEL, formatDate, OUTCOME_LABEL } from "@/lib/format";
+import { countDecisions, latestDecisionUpdate, listDecisions, listMeetingsWithCounts } from "@/lib/queries/meetings";
 import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";
@@ -44,21 +44,12 @@ export default async function ReunioesPage({ searchParams }: { searchParams: Pro
   const where: Prisma.DecisionWhereInput = view === "todas" ? base : { AND: [base, view === "aguardar" ? WAITING : WITH_RESULT] };
 
   const [decisions, total, withResult, waiting, meetings, updated] = await Promise.all([
-    db.decision.findMany({
-      where,
-      include: { meeting: true, sources: { where: { official: true } } },
-      orderBy: decisionOrder(params),
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-    db.decision.count({ where }),
-    db.decision.count({ where: { AND: [base, WITH_RESULT] } }),
-    db.decision.count({ where: { AND: [base, WAITING] } }),
-    db.meeting.findMany({
-      include: { sources: { where: { official: true } }, _count: { select: { decisions: true } } },
-      orderBy: { date: "desc" },
-    }),
-    db.decision.aggregate({ _max: { updatedAt: true } }),
+    listDecisions(where, decisionOrder(params), page, PAGE_SIZE),
+    countDecisions(where),
+    countDecisions({ AND: [base, WITH_RESULT] }),
+    countDecisions({ AND: [base, WAITING] }),
+    listMeetingsWithCounts(),
+    latestDecisionUpdate(),
   ]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filters = { ...params, pagina: undefined };

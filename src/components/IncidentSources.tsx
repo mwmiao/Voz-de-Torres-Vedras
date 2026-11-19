@@ -1,14 +1,14 @@
 import { ScrollTable } from "@/components/civic";
-import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { SOURCE_TIER_LABEL, SOURCE_TIER_NUMBER } from "@/lib/incidents";
+import { listDataSourceStates } from "@/lib/queries/sources";
 import { frequencyLabel, SOURCE_CATALOG, SOURCE_STATUS_LABEL, sourceStatus } from "@/lib/source-catalog";
 
 
 /** Origens das ocorrências recentes, com nível, cobertura, frequência e estado. */
 export async function IncidentSources() {
   const sources = SOURCE_CATALOG.filter((source) => source.group === "ocorrencias");
-  const states = await db.dataSourceState.findMany({ where: { id: { in: sources.map((source) => source.id) } } });
+  const states = await listDataSourceStates(sources.map((source) => source.id));
   const byId = new Map(states.map((state) => [state.id, state]));
   return (
     <section aria-labelledby="fontes-ocorrencias" className="mb-10">

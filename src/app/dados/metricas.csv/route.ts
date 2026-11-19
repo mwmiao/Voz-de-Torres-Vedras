@@ -1,10 +1,10 @@
 import { csvResponse, toCsv } from "@/lib/csv";
-import { db } from "@/lib/db";
+import { listMetricsForExport } from "@/lib/queries/metrics";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const metrics = await db.metric.findMany({ orderBy: [{ key: "asc" }, { period: "asc" }, { dimension: "asc" }] });
+  const metrics = await listMetricsForExport();
   return csvResponse(
     "metricas-torres-vedras.csv",
     toCsv(

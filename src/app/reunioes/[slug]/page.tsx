@@ -5,9 +5,8 @@ import { DecisionList } from "@/components/DecisionTable";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { SummaryBlock } from "@/components/civic";
 import { Receipt } from "@/components/Receipts";
-import { db } from "@/lib/db";
-import { SOURCED_DECISION } from "@/lib/filters";
 import { BODY_LABEL, formatDate, formatTime } from "@/lib/format";
+import { findMeeting, findMeetingTitle } from "@/lib/queries/meetings";
 import { summaryMap } from "@/lib/summary-data";
 
 export const dynamic = "force-dynamic";
@@ -15,18 +14,12 @@ export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const meeting = await db.meeting.findUnique({ where: { slug: (await params).slug }, select: { title: true } });
+  const meeting = await findMeetingTitle((await params).slug);
   return meeting ? { title: meeting.title } : {};
 }
 
 export default async function MeetingPage({ params }: Props) {
-  const meeting = await db.meeting.findUnique({
-    where: { slug: (await params).slug },
-    include: {
-      sources: { orderBy: { publishedAt: "desc" } },
-      decisions: { where: SOURCED_DECISION, include: { meeting: true, sources: { where: { official: true } } } },
-    },
-  });
+  const meeting = await findMeeting((await params).slug);
   if (!meeting) notFound();
 
   const [meetingSummary, summaries] = await Promise.all([

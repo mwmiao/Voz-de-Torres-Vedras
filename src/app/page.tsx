@@ -2,12 +2,15 @@ import type { Body, Meeting } from "@prisma/client";
 import Link from "next/link";
 import { AlertList, EmptyState, ExternalLink, MetricCard, SectionHead, TrendText } from "@/components/civic";
 import { OutcomeBadge } from "@/components/labels";
-import { activeAlertWhere, groupAlerts, SEVERITY_ORDER } from "@/lib/alerts";
-import { db } from "@/lib/db";
+import { groupAlerts, SEVERITY_ORDER } from "@/lib/alerts";
 import { displayTitle } from "@/lib/display-title";
-import { SOURCED_DECISION } from "@/lib/filters";
 import { BODY_LABEL, formatDate, formatEur, formatNumber, formatTime } from "@/lib/format";
 import { latestMetric, metricSeries } from "@/lib/metrics";
+import { listActiveAlerts } from "@/lib/queries/alerts";
+import { listLatestContracts } from "@/lib/queries/contracts";
+import { listLatestCrimeTotals } from "@/lib/queries/crime";
+import { findLastMeeting, findNextMeeting, listLatestDecidedDecisions } from "@/lib/queries/meetings";
+import { findLatestSummary } from "@/lib/queries/summaries";
 import { SUMMARY_TYPE_LABEL } from "@/lib/summaries";
 import { compareValues } from "@/lib/trends";
 
@@ -50,25 +53,18 @@ function NextMeeting({ body, next, last }: { body: Body; next: Meeting | null; l
 export default async function Home() {
   const now = new Date();
   const [alerts, summaries, nextAm, nextCm, lastAm, lastCm, decisions, contracts, crime, contractCount, contractValue, meetingsByYear] = await Promise.all([
-    db.alert.findMany({ where: activeAlertWhere(now), orderBy: [{ startsAt: "desc" }] }),
+    listActiveAlerts(now),
     // Uma de cada tipo, para que uma série de contratos não esconda decisões ou reuniões.
     Promise.all(
-      ["decisao", "reuniao", "contrato", "procedimento"].map((entityType) =>
-        db.summary.findFirst({ where: { available: true, entityType, date: { lte: now } }, orderBy: { date: "desc" } }),
-      ),
+      ["decisao", "reuniao", "contrato", "procedimento"].map((entityType) => findLatestSummary(entityType, now)),
     ),
-    db.meeting.findFirst({ where: { body: "ASSEMBLEIA_MUNICIPAL", date: { gte: now } }, orderBy: { date: "asc" } }),
-    db.meeting.findFirst({ where: { body: "EXECUTIVO_MUNICIPAL", date: { gte: now } }, orderBy: { date: "asc" } }),
-    db.meeting.findFirst({ where: { body: "ASSEMBLEIA_MUNICIPAL", date: { lt: now } }, orderBy: { date: "desc" } }),
-    db.meeting.findFirst({ where: { body: "EXECUTIVO_MUNICIPAL", date: { lt: now } }, orderBy: { date: "desc" } }),
-    db.decision.findMany({
-      where: { ...SOURCED_DECISION, outcome: { notIn: ["POR_PUBLICAR", "TOMADA_CONHECIMENTO"] } },
-      include: { meeting: true },
-      orderBy: [{ meeting: { date: "desc" } }, { id: "asc" }],
-      take: 4,
-    }),
-    db.contract.findMany({ orderBy: { signedAt: { sort: "desc", nulls: "last" } }, take: 4 }),
-    db.crimeRecord.findMany({ where: { categoryCode: "T" }, orderBy: { year: "desc" }, take: 2 }),
+    findNextMeeting("ASSEMBLEIA_MUNICIPAL", now),
+    findNextMeeting("EXECUTIVO_MUNICIPAL", now),
+    findLastMeeting("ASSEMBLEIA_MUNICIPAL", now),
+    findLastMeeting("EXECUTIVO_MUNICIPAL", now),
+    listLatestDecidedDecisions(4),
+    listLatestContracts(4),
+    listLatestCrimeTotals(),
     metricSeries("contratos-numero"),
     metricSeries("contratos-valor"),
     metricSeries("reunioes"),

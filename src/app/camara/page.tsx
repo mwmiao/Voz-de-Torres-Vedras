@@ -3,8 +3,8 @@ import Link from "next/link";
 import { EmptyState, FilterPanel } from "@/components/civic";
 import { KindLabel, LastUpdated, PageHead, pageSections } from "@/components/labels";
 import { SourceChips } from "@/components/Receipts";
-import { db } from "@/lib/db";
 import type { SearchParams } from "@/lib/filters";
+import { listActiveOfficials, listCommittees } from "@/lib/queries/officials";
 import { searchKey, searchTerm } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +14,8 @@ export default async function CamaraPage({ searchParams }: { searchParams: Promi
   const params = await searchParams;
   const q = searchTerm(params.q);
   const [allOfficials, allCommittees] = await Promise.all([
-    db.official.findMany({ where: { active: true }, include: { sources: true }, orderBy: [{ order: "asc" }, { name: "asc" }] }),
-    db.committee.findMany({
-      include: { sources: true, members: { include: { official: true }, orderBy: [{ isChair: "desc" }, { official: { name: "asc" } }] } },
-      orderBy: { name: "asc" },
-    }),
+    listActiveOfficials(),
+    listCommittees(),
   ]);
   const matches = (...parts: (string | null | undefined)[]) => !q || searchKey(...parts).includes(q);
   const officials = allOfficials.filter((person) => matches(person.name, person.role, person.party, person.parish, ...(person.portfolios as string[])));

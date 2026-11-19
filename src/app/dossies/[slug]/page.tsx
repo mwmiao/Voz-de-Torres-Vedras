@@ -4,33 +4,20 @@ import { notFound } from "next/navigation";
 import { DecisionList } from "@/components/DecisionTable";
 import { KindLabel, LastUpdated, PageHead } from "@/components/labels";
 import { Claims, Receipt } from "@/components/Receipts";
-import { db } from "@/lib/db";
-import { SOURCED_DECISION } from "@/lib/filters";
 import { formatDate } from "@/lib/format";
+import { findIssue, findIssueMeta } from "@/lib/queries/issues";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const issue = await db.issue.findUnique({ where: { slug: (await params).slug }, select: { title: true, summary: true } });
+  const issue = await findIssueMeta((await params).slug);
   return issue ? { title: issue.title, description: issue.summary } : {};
 }
 
 export default async function DossierPage({ params }: Props) {
-  const issue = await db.issue.findUnique({
-    where: { slug: (await params).slug },
-    include: {
-      dates: { orderBy: { date: "asc" } },
-      sources: { orderBy: { publishedAt: "desc" } },
-      claims: { include: { sources: true } },
-      decisions: {
-        where: SOURCED_DECISION,
-        include: { meeting: true, sources: { where: { official: true } } },
-        orderBy: { meeting: { date: "desc" } },
-      },
-    },
-  });
+  const issue = await findIssue((await params).slug);
   if (!issue) notFound();
 
   return (

@@ -9,7 +9,7 @@ import { StackedTable } from "@/components/StackedTable";
 import { budgetOverview, GLOSSARY, PORTALS } from "@/lib/budget-copy";
 import { groupBudgetDocs } from "@/lib/budget-docs";
 import { amountOf, budgetYear, cashHistory, latestFinancialFacts } from "@/lib/budget-facts";
-import { db } from "@/lib/db";
+import { listBudgetDocuments, listBudgetEntries } from "@/lib/queries/budget";
 import { formatDate, formatEur } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +17,8 @@ export const metadata: Metadata = { title: "Orçamento", description: "Orçament
 
 export default async function OrcamentoPage() {
   const [entries, docs] = await Promise.all([
-    db.budgetEntry.findMany({ include: { sources: true }, orderBy: [{ amountEur: "desc" }] }),
-    db.source.findMany({ where: { type: "ORCAMENTO", official: true }, orderBy: { publishedAt: { sort: "desc", nulls: "last" } }, take: 24 }),
+    listBudgetEntries(),
+    listBudgetDocuments(),
   ]);
   const summary = entries.filter((entry) => entry.kind === "RESUMO");
   const spending = entries.filter((entry) => entry.kind === "DESPESA");

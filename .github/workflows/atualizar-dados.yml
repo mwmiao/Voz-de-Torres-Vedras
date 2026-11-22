@@ -34,8 +34,8 @@ jobs:
       INGEST_DELAY_MS: ${{ vars.INGEST_DELAY_MS || '2000' }}
       INGEST_DISABLED_SOURCES: ${{ vars.INGEST_DISABLED_SOURCES || '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -58,7 +58,7 @@ jobs:
       - if: steps.recolha.outputs.alterado == 'true'
         run: npm run data:export
       - if: steps.recolha.outputs.alterado == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: dados/atualizacao-automatica
           add-paths: data/snapshot
